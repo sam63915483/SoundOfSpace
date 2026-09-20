@@ -79,7 +79,7 @@ public static class ContactDrill
                 }
                 sb.AppendLine();
             }
-            sb.AppendLine("targets: close 0.5 sq 1.0 = W (a chase-down from behind wraps); close 2.5 sq 0.3 = a (a juke makes it glancing); close 4 sq 0.8 = W");
+            sb.AppendLine("targets: close 0.0 sq 1.0 = W (a grab from behind drags him down); close 2.5 sq 0.3 = a (a juke makes it glancing); close 4 sq 0.8 = W");
         }
         catch (System.Exception e) { sb.AppendLine("!! EXCEPTION " + e); }
         finally { if (root != null) Object.DestroyImmediate(root); }

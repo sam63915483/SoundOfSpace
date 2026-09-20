@@ -67,9 +67,9 @@ public class PlayInstance
         public int engagements, blocksWonRush, blocksWonHold;
         public float pushbackMetres, pocketLife;   // pocketLife: seconds after the snap the pocket collapsed, -1 = never
         public string maxOverlapDesc;
+        public int wraps, armTackles, hitSquare, hitAngled, hitGlancing;
     }
 
-    public const float TackleRadius = 1.5f;     // an arm's reach / a dive
     /// Nobody is ever teleported into formation (Sam: it ruins the illusion).
     /// If the lineup is taking this long the play starts anyway and the
     /// stragglers run in — their brains cope with being out of position.
@@ -94,12 +94,6 @@ public class PlayInstance
     public const float JumpLead = 0.42f;
     /// Tackles: a lunge that misses puts the tackler on the ground and the
     /// runner keeps going; a hit puts both down.
-    public const float MissedTackleChance = 0.18f;
-    public const float MissedTackleBlocked = 0.45f;     // a man being blocked lunges worse
-    public const float MissedTackleBehind = 0.22f;      // diving at a runner's heels
-    public const float MissedTackleJuked = 0.22f;       // added while the runner is mid-juke
-    public const float MissedTackleSpun = 0.22f;        // added while he's spinning off
-    public const float MaxMissChance = 0.52f;           // moves and angles stack, but a tackler still gets a hand on him
     public const float TackleDownSeconds = 1.6f;
     public const float MissDownSeconds = 1.3f;
     public const float HardFallDownSeconds = 2.6f;
@@ -109,7 +103,7 @@ public class PlayInstance
     public const float DiveMinDist = 1.7f, DiveMaxDist = 2.7f, DiveReach = 1.6f;
     public const float HurdleClipChance = 0.22f;        // a clean-timed hurdle still gets caught sometimes
     public const float HurdleLateClipChance = 0.5f;     // left it too late
-    public const float ClipFumbleChance = 0.3f;
+    public const float ClipFumbleChance = 0.2f;
     public const float BigHitFumbleChance = 0.035f;
     public const float ScoopChance = 0.40f;              // a loose ball picked up on the run rather than fallen on
     public const float WildSnapChance = 0.02f;
@@ -188,7 +182,6 @@ public class PlayInstance
     readonly List<FootballPlayer> _wrappers = new List<FootballPlayer>();   // everyone wrapped on the carrier (a gang tackle)
     public bool isPunt;
     public const float WrapSeconds = 0.55f;           // the drag before they go down
-    public const float BreakTackleChance = 0.22f;
     public const float TipChance = 0.35f;              // the loser of a contested ball gets a hand on it: it pops up, live
     public const float PartySeconds = 4.5f;            // the touchdown line-up dance before the kickoff walk
     readonly Dictionary<FootballPlayer, float> _slowUntil = new Dictionary<FootballPlayer, float>();   // jammed at the line
@@ -811,118 +804,117 @@ public class PlayInstance
         }
     }
 
-    /// Every opponent on the carrier: a standing lunge inside arm's reach, or
-    /// a DIVE from further out. Dives are committed — the carrier can hurdle
-    /// one, and a clipped hurdle is a tumble with the ball loose sometimes.
-    /// Returns true if the play ended.
+    /// Tackles are contact (spec §3): a defender's disc on the carrier's, or a
+    /// dive landing on it, starts one. Hit quality from closing speed and how
+    /// square the hit is decides wrap (the drag, the pile, the break) vs an arm
+    /// tackle (he stumbles through it, the defender falls past). A juke or spin
+    /// produces the miss because the BODY moved and the contact went glancing.
+    /// Dives from range are unchanged. Returns true if the play ended.
     bool TickTackles(FootballPlayer carrier)
     {
         float ts = view.timeSinceSnap;
+        Vector3 carrierDir = carrier.Vel.sqrMagnitude > 0.25f ? carrier.Vel.normalized : Vector3.zero;
         for (int i = 0; i < _players.Count; i++)
         {
             var d = _players[i];
             if (d.team == carrier.team || d.IsDown) continue;
             float dist = Vector3.Distance(d.Pos, carrier.Pos);
+            Vector3 toD = d.Pos - carrier.Pos; toD.y = 0f;
 
+            // A hurdle over a diver: the discs never touch (lifted), so this is
+            // the one timing test that stays — a clip on a bad leap.
+            if (d.IsDiving && carrier.IsHurdling && !_diveResolved.Contains(d))
+            {
+                float ph = d.DivePhase;
+                if (ph < 0.3f || ph > 0.85f || dist >= DiveReach) continue;
+                _diveResolved.Add(d);
+                float hp = carrier.HurdlePhase;
+                float clip = hp < 0.12f || hp > 0.9f ? HurdleLateClipChance : HurdleClipChance;
+                if (_rng.NextDouble() >= clip) { log?.Invoke(carrier.team.shortName + " " + carrier.Label + " HURDLES " + d.Label + "!"); continue; }
+                _stats.hurdlesClipped++; _stats.diveHits++;
+                d.FallDown(MissDownSeconds);
+                carrier.HardFall(HardFallDownSeconds);
+                if (_rng.NextDouble() < ClipFumbleChance)
+                {
+                    log?.Invoke(carrier.team.shortName + " " + carrier.Label + " is clipped mid-hurdle — goes down hard and the BALL IS LOOSE!");
+                    Fumble(carrier, d);
+                    return false;
+                }
+                log?.Invoke(carrier.team.shortName + " " + carrier.Label + " is clipped mid-hurdle and goes down hard");
+                EndTackle(carrier, d, 99f);
+                return true;
+            }
+
+            bool reach = false;
+            if (!view.ContactBetween(d, carrier, out var c))
+            {
+                if (_tackleRetry.TryGetValue(d, out float until) && ts < until) continue;
+                float closingGap = Vector3.Dot(carrier.Vel - d.Vel, toD.normalized);      // + = the gap is closing
+                // Arms are longer than a disc: a man within reach who isn't
+                // being pulled away can get a hand on him. A weaker hit than a
+                // body-on-body one — mostly an arm tackle, a stumble, and then
+                // the disc contact that wraps him.
+                if (!d.IsDiving && !view.IsEngaged(d) && dist < carrier.BodyRadius + d.BodyRadius + ArmReach && closingGap > -0.3f)
+                {
+                    reach = true;
+                    Vector3 n = toD.sqrMagnitude > 1e-4f ? -toD.normalized : Vector3.forward;      // d → carrier
+                    c = new BodyContact { a = d, b = carrier, normal = n, closing = Mathf.Max(0f, closingGap), overlap = 0f };
+                }
+                else
+                {
+                    // Out of reach. From range, a free man who is not losing ground may dive.
+                    if (d.IsDiving || view.IsEngaged(d) || dist < DiveMinDist || dist > DiveMaxDist) continue;
+                    if (_diveConsider.TryGetValue(d, out float next) && ts < next) continue;
+                    _diveConsider[d] = ts + 0.7f;
+                    if (closingGap < DiveClosing) continue;
+                    if (_rng.NextDouble() >= DiveChance) continue;
+                    Vector3 aim = (carrier.Pos + carrier.Vel * 0.25f) - d.Pos; aim.y = 0f;
+                    d.StartDive(aim);
+                    _tackleRetry[d] = ts + 1.6f;
+                    _stats.dives++;
+                    continue;
+                }
+            }
+
+            // Contact. A diver connects only in his window; a blocked man only gets an arm out.
             if (d.IsDiving)
             {
                 if (_diveResolved.Contains(d)) continue;
                 float ph = d.DivePhase;
                 if (ph < 0.3f || ph > 0.85f) continue;
-                if (dist >= DiveReach) continue;
                 _diveResolved.Add(d);
-                if (carrier.IsHurdling)
-                {
-                    float hp = carrier.HurdlePhase;
-                    float clip = hp < 0.12f || hp > 0.9f ? HurdleLateClipChance : HurdleClipChance;
-                    if (_rng.NextDouble() >= clip)
-                    {
-                        log?.Invoke(carrier.team.shortName + " " + carrier.Label + " HURDLES " + d.Label + "!");
-                        continue;                                        // clean: the diver hits the grass alone
-                    }
-                    // Clipped: a tumble, and the ball may come out.
-                    _stats.hurdlesClipped++; _stats.diveHits++;
-                    d.FallDown(MissDownSeconds);
-                    carrier.HardFall(HardFallDownSeconds);
-                    if (_rng.NextDouble() < ClipFumbleChance)
-                    {
-                        log?.Invoke(carrier.team.shortName + " " + carrier.Label + " is clipped mid-hurdle — goes down hard and the BALL IS LOOSE!");
-                        Fumble(carrier, d);
-                        return false;
-                    }
-                    log?.Invoke(carrier.team.shortName + " " + carrier.Label + " is clipped mid-hurdle and goes down hard");
-                    EndTackle(carrier, d);
-                    return true;
-                }
-                // A dive that connects: he has him by the legs.
                 _stats.diveHits++;
-                if (_rng.NextDouble() < BigHitFumbleChance)
-                {
-                    d.FallDown(TackleDownSeconds);
-                    carrier.FallDown(TackleDownSeconds);
-                    log?.Invoke(d.team.shortName + " " + d.Label + " lays him out — the ball comes loose!");
-                    Fumble(carrier, d);
-                    return false;
-                }
-                d.FallDown(TackleDownSeconds);
-                EndTackle(carrier, d);
-                return true;
             }
-
-            if (_tackleRetry.TryGetValue(d, out float until) && ts < until) continue;
-            // A blocked man only gets an arm out; you can run past him.
-            bool blocked = d.speedScale < 0.5f;
-            float reach = blocked ? TackleRadius * 0.55f : TackleRadius;
-            Vector3 toD = d.Pos - carrier.Pos; toD.y = 0f;
-
-            if (dist >= reach)
-            {
-                // Too far for a lunge: dive? Only a free man closing at speed.
-                if (blocked || dist < DiveMinDist || dist > DiveMaxDist) continue;
-                if (_diveConsider.TryGetValue(d, out float next) && ts < next) continue;
-                _diveConsider[d] = ts + 0.22f;
-                // Closing speed: how fast the gap shrinks (+ = he's getting there).
-                float closing = Vector3.Dot(carrier.Vel - d.Vel, toD.normalized);
-                if (closing < 2.5f) continue;
-                if (_rng.NextDouble() >= DiveChance) continue;
-                Vector3 aim = (carrier.Pos + carrier.Vel * 0.25f) - d.Pos; aim.y = 0f;
-                d.StartDive(aim);
-                _tackleRetry[d] = ts + 1.6f;
-                _stats.dives++;
-                continue;
-            }
-            bool fromBehind = carrier.Vel.sqrMagnitude > 4f && Vector3.Dot(toD.normalized, carrier.Vel.normalized) < -0.6f;
-            float miss = blocked ? MissedTackleBlocked : fromBehind ? MissedTackleBehind : MissedTackleChance;
-            if (carrier.IsJuking && carrier.JukePhase < 0.7f) miss += MissedTackleJuked;
-            if (carrier.IsSpinning) miss += MissedTackleSpun;
+            Vector3 nFromD = c.NormalFrom(d);                                       // d → carrier
+            float square = carrierDir == Vector3.zero ? 1f : Mathf.Abs(Vector3.Dot(nFromD, carrierDir));
             bool stiff = carrier.IsStiffArming && Vector3.Dot(toD.normalized, carrier.StiffArmDir) > 0.5f;
-            if (stiff) { miss += 0.3f; d.Nudge(d.Pos + toD.normalized * 0.5f); }
-            miss = Mathf.Min(miss, stiff ? 0.7f : MaxMissChance);
-            if (_rng.NextDouble() < miss)
+            if (stiff) { square = 0f; d.ShiftBody(toD.normalized * 0.5f); }
+            float hit = FootballBodies.TackleHit(Mathf.Max(0f, c.closing), square, d.BodyMass) * (0.85f + 0.3f * (float)_rng.NextDouble()) * (reach && square < 0.75f ? ReachScale : 1f);   // a square grab (from behind, head-on) is a full drag-down
+            if (view.IsEngaged(d)) hit = Mathf.Min(hit, FootballBodies.WrapThreshold - 0.01f);
+            if (square >= 0.75f) _stats.hitSquare++; else if (square >= 0.35f) _stats.hitAngled++; else _stats.hitGlancing++;
+
+            if (hit < FootballBodies.WrapThreshold)
             {
-                d.FallDown(MissDownSeconds);                                                    // a missed lunge: forward, past him
-                _tackleRetry[d] = ts + TackleRetry;
-                // He got a hand on him: a stumble sometimes.
-                if (!stiff && _rng.NextDouble() < 0.4) { carrier.StartStumble(); _stats.stumbles++; }
-                string how = stiff ? " stiff-arms " : carrier.IsSpinning ? " spins out of " : carrier.IsJuking ? " jukes past " : " misses the tackle by ";
-                log?.Invoke(stiff || carrier.IsSpinning || carrier.IsJuking
-                    ? carrier.team.shortName + " " + carrier.Label + how + d.Label + "!"
-                    : d.team.shortName + " " + d.Label + " misses the tackle!");
+                // The arm tackle: he runs through it. A body that missed falls
+                // past him; a reach that slipped off only costs the chaser a step.
+                _stats.armTackles++;
+                if (reach) { d.StartStumble(); _tackleRetry[d] = ts + 0.5f; }
+                else { d.FallDown(MissDownSeconds); _tackleRetry[d] = ts + TackleRetry; }
+                if (!stiff && _rng.NextDouble() < 0.6) { carrier.StartStumble(); _stats.stumbles++; }
+                string how = stiff ? " stiff-arms " : carrier.IsSpinning ? " spins out of " : carrier.IsJuking ? " jukes past " : " runs through the arm tackle of ";
+                log?.Invoke(carrier.team.shortName + " " + carrier.Label + how + d.Label + "!");
                 continue;
             }
-            // Hurdling into a standing man: a big hit, the ball can come out.
-            if (carrier.IsHurdling || (fromBehind == false && carrier.Vel.magnitude > 6f && _rng.NextDouble() < BigHitFumbleChance * 0.6f))
+            // A big hit can jar it loose (scaled by how hard it was).
+            if (_rng.NextDouble() < BigHitFumbleChance * Mathf.Clamp(hit / 4f, 0.5f, 1.8f))
             {
-                if (_rng.NextDouble() < BigHitFumbleChance * 2f)
-                {
-                    d.FallDown(TackleDownSeconds); carrier.FallDown(TackleDownSeconds);
-                    log?.Invoke(d.team.shortName + " " + d.Label + " meets him in the air — the ball pops out!");
-                    Fumble(carrier, d);
-                    return false;
-                }
+                d.FallDown(TackleDownSeconds); carrier.FallDown(TackleDownSeconds);
+                log?.Invoke(d.team.shortName + " " + d.Label + " lays him out — the ball comes loose!");
+                Fumble(carrier, d);
+                return false;
             }
-            // The wrap: arms round him, dragged for a stride, then down.
-            EndTackle(carrier, d);
+            _stats.wraps++;
+            EndTackle(carrier, d, hit);
             return true;
         }
         return false;
@@ -931,16 +923,23 @@ public class PlayInstance
     /// The hit: the tackler wraps him, the two of them drag for a stride
     /// (the runner driving, forward progress), anyone else arriving piles on,
     /// and then they all go down — unless the runner breaks it.
-    void EndTackle(FootballPlayer carrier, FootballPlayer d)
+    void EndTackle(FootballPlayer carrier, FootballPlayer d, float hit)
     {
         _pendingTackler = d;
         _wrappers.Clear(); _wrappers.Add(d);
         d.wrapping = carrier;
         _tackleEndAt = view.timeSinceSnap + WrapSeconds;
+        _wrapHit = hit; _wrapCarrierSpeed = carrier.Vel.magnitude; _breakRolled = false;
     }
+    float _wrapHit, _wrapCarrierSpeed; bool _breakRolled;
+    public const float BreakScale = 3.8f;             // a runner's momentum has to beat the hit × this to break a wrap (2.6 let a full-speed man break every grab from behind)
+    public const float DefenderReachPenalty = 0.35f;  // m: a reaching defender's arms vs the receiver's (full reach picked off 9-15 a game)
+    public const float ArmReach = 0.55f;              // m beyond the discs a tackler can get a hand on the runner
+    public const float ReachScale = 0.7f;             // a reach is a weaker hit than a body
+    public const float DiveClosing = 0.4f;             // m/s the gap must be closing for a dive (was 2.5: a trailing man never dived; 0.5 had him diving every half second)
 
     /// During the wrap: the carrier is slowed and the wrappers ride him;
-    /// a second man within reach joins; a strong runner may break it.
+    /// a second man who touches the wrap joins; a strong runner may break it.
     void TickWrap(FootballPlayer carrier)
     {
         carrier.speedScale = Mathf.Min(carrier.speedScale, 0.4f);
@@ -948,7 +947,9 @@ public class PlayInstance
         {
             var d = _players[i];
             if (d.team == carrier.team || d.IsDown || _wrappers.Contains(d)) continue;
-            if (Vector3.Distance(d.Pos, carrier.Pos) < 1.4f) { _wrappers.Add(d); d.wrapping = carrier; log?.Invoke(d.team.shortName + " " + d.Label + " piles on"); }
+            bool touching = view.ContactBetween(d, carrier, out _);
+            if (!touching) foreach (var w in _wrappers) if (view.ContactBetween(d, w, out _)) { touching = true; break; }
+            if (touching) { _wrappers.Add(d); d.wrapping = carrier; log?.Invoke(d.team.shortName + " " + d.Label + " piles on"); }
         }
         foreach (var w in _wrappers)
         {
@@ -956,15 +957,21 @@ public class PlayInstance
             w.Nudge(Vector3.Lerp(w.Pos, behind, 0.35f));
             w.speedScale = 0f;
         }
-        // Breaking it: one man on him, a strong runner, a roll of the dice.
-        if (_wrappers.Count == 1 && view.timeSinceSnap > _tackleEndAt - WrapSeconds * 0.5f && _rng.NextDouble() < BreakTackleChance * (0.6f + 0.8f * carrier.team.speed) / 20f)
+        // Breaking it: one man on him, judged once at the midpoint — the
+        // runner's momentum against the hit that wrapped him.
+        if (_wrappers.Count == 1 && !_breakRolled && view.timeSinceSnap > _tackleEndAt - WrapSeconds * 0.5f)
         {
-            var d = _wrappers[0];
-            d.wrapping = null; d.FallDown(MissDownSeconds);
-            _tackleRetry[d] = view.timeSinceSnap + TackleRetry;
-            _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
-            _stats.brokenTackles++;
-            log?.Invoke(carrier.team.shortName + " " + carrier.Label + " BREAKS THE TACKLE of " + d.Label + "!");
+            _breakRolled = true;
+            float momentum = carrier.BodyMass * _wrapCarrierSpeed * (0.7f + 0.6f * carrier.team.speed);
+            if (momentum > _wrapHit * (0.85f + 0.3f * (float)_rng.NextDouble()) * BreakScale)
+            {
+                var d = _wrappers[0];
+                d.wrapping = null; d.FallDown(MissDownSeconds);
+                _tackleRetry[d] = view.timeSinceSnap + TackleRetry;
+                _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
+                _stats.brokenTackles++;
+                log?.Invoke(carrier.team.shortName + " " + carrier.Label + " BREAKS THE TACKLE of " + d.Label + "!");
+            }
         }
     }
 
@@ -1044,7 +1051,7 @@ public class PlayInstance
     public string DebugSetupState()
     {
         var sb = new System.Text.StringBuilder();
-        sb.Append("phase=" + phase + " broke=" + _broke + " ballReady=" + _ballReady + " ball=" + _ball.state + (_ball.holder != null ? "/" + _ball.holder.Label : "") + " setup=" + _setupSeconds.ToString("0") + "s phaseTime=" + _phaseTime.ToString("0") + "s;");
+        sb.Append("phase=" + phase + (view.isKickoff ? (isPunt ? " PUNT" : " KICKOFF") : "") + " broke=" + _broke + " ballReady=" + _ballReady + " ball=" + _ball.state + (_ball.holder != null ? "/" + _ball.holder.Label : "") + " setup=" + _setupSeconds.ToString("0") + "s phaseTime=" + _phaseTime.ToString("0") + "s;");
         foreach (var kv in _setup)
         {
             var p = kv.Key; var mv = kv.Value;
@@ -1360,9 +1367,15 @@ public class PlayInstance
                         // is reacting.
                         if (p.role == FootballRole.OL || p.role == FootballRole.C) continue;
                         if (p.role == FootballRole.DL && _ball.airTime < 0.5f) continue;
-                        lowHands = p != _ball.intendedReceiver;
+                        // The man it was thrown to is stretched out for it; a
+                        // defender with his arms up (ReachFor: the nearest
+                        // man to the catch point) is too. Bodies are solid, so
+                        // without the full reach no corner could ever get a
+                        // hand on a ball in a receiver's hands.
+                        lowHands = p != _ball.intendedReceiver && !p.IsReaching;
                     }
                     float gap = p == humanSlot ? _ball.TouchDistance(p.BallHoldPoint(), _prevBallPos) - 1.6f : p.ArmGap(_ball, _prevBallPos, lowHands);
+                    if (!_ball.isSnap && !_ball.isKick && p != _ball.intendedReceiver && p.IsReaching) gap += DefenderReachPenalty;   // arms over a receiver's body come up a little short
                     if (gap <= 0f && gap < bd) { second = best; sd = bd; bd = gap; best = p; }
                     else if (gap <= 0f && gap < sd) { sd = gap; second = p; }
                 }

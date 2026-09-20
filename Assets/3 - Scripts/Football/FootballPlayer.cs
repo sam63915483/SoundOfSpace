@@ -142,6 +142,8 @@ public class FootballPlayer : MonoBehaviour
     /// Extra reach while airborne (hands up).
     public float JumpReach => IsJumping ? JumpHeight * _jumpScale * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
     public bool HasRig => _rig != null && _rig.Ready;
+    /// Arms out for a ball right now (ReachFor this tick or within the last 0.15 s).
+    public bool IsReaching => _reachThisTick || Time.time < _reachUntil;
     public HoldStyle Hold => _hold;
     public Stance CurrentStance => _stance;
     public GameObject ModelPrefab => _modelPrefab;
@@ -191,6 +193,19 @@ public class FootballPlayer : MonoBehaviour
         _modelPrefab = modelPrefab;
         if (modelPrefab != null) BuildAlien(modelPrefab);
         else BuildCapsule(bodyMat);
+
+        // Solid to the real player: a kinematic capsule on the slot root (the
+        // sim never reads it). Layer 10 "Body" is in PlayerController.walkableMask.
+        // Play mode only — the edit-mode soak wants no physics components.
+        if (Application.isPlaying)
+        {
+            var cap = gameObject.AddComponent<CapsuleCollider>();
+            cap.center = Vector3.up * (Height * 0.5f); cap.height = Height; cap.radius = BodyRadius;
+            var kin = gameObject.AddComponent<Rigidbody>();
+            kin.isKinematic = true; kin.useGravity = false;
+            gameObject.layer = 10;
+            _capsule = cap;
+        }
 
         if (!ShowLabels) return;
         var lbl = new GameObject("Label");
@@ -374,6 +389,35 @@ public class FootballPlayer : MonoBehaviour
     /// FootballHumanQB drains this every step and applies it to the player's rigidbody.
     public Vector3 TakePendingShove() { var s = _pendingShove; _pendingShove = Vector3.zero; return s; }
 
+    CapsuleCollider _capsule;
+    Vector3 _slideN0, _slideN1;
+    LineRenderer _ring;
+    /// Debug (F8 "contact discs"): a ring at the disc's edge — red while touching, yellow while blocking.
+    public void SetRingVisible(bool on)
+    {
+        if (on && _ring == null)
+        {
+            var go = new GameObject("ContactRing"); go.transform.SetParent(transform, false);
+            go.layer = gameObject.layer;
+            _ring = go.AddComponent<LineRenderer>();
+            _ring.useWorldSpace = false; _ring.loop = true; _ring.positionCount = 24;
+            _ring.startWidth = _ring.endWidth = 0.04f;
+            _ring.material = new Material(FootballShader.Unlit);
+            _ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _ring.receiveShadows = false;
+        }
+        if (_ring != null) _ring.gameObject.SetActive(on);
+    }
+    void UpdateRing()
+    {
+        if (_ring == null || !_ring.gameObject.activeSelf) return;
+        float r = IsDown ? FootballBodies.DownRadius : BodyRadius;
+        for (int i = 0; i < 24; i++) { float a = i / 24f * Mathf.PI * 2f; _ring.SetPosition(i, new Vector3(Mathf.Cos(a) * r, 0.03f, Mathf.Sin(a) * r)); }
+        Color col = inContact ? Color.red : blocking ? Color.yellow : Color.white;
+        _ring.startColor = _ring.endColor = col;
+        _ring.material.color = col;
+    }
+
     /// Drill / probe only: set the velocity directly.
     public void SetVelForDrill(Vector3 velField) { velField.y = 0f; _vel = velField; }
 
@@ -383,6 +427,7 @@ public class FootballPlayer : MonoBehaviour
     {
         if (humanDriven == on) return;
         humanDriven = on;
+        if (_capsule != null) _capsule.enabled = !on;                 // the slot IS the player now: no wall around him
         foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = !on;
         if (on) { DetachHeldBall(); _hold = HoldStyle.None; }
         else Teleport(benchSpot, Vector3.right);
@@ -715,9 +760,12 @@ public class FootballPlayer : MonoBehaviour
         // round a pile, the huddle). NOT a tackler on the carrier or the
         // carrier on a tackler — there the hit is the point — and not a man
         // engaged in a block, whose push is resolved by the engagement.
-        else if (view != null && view.contacts.Count > 0 && !view.IsEngaged(this))
+        else if (view != null && view.contacts.Count > 0 && !view.IsEngaged(this) && want.sqrMagnitude > 1e-4f)
         {
             var carrier = view.Carrier;
+            Vector3 original = want;
+            int blockers = 0;
+            _slideN0 = _slideN1 = Vector3.zero;
             for (int ci = 0; ci < view.contacts.Count; ci++)
             {
                 var c = view.contacts[ci];
@@ -726,8 +774,32 @@ public class FootballPlayer : MonoBehaviour
                 if (carrier != null && ((this == carrier && other.team != team) || (other == carrier && other.team != team))) continue;
                 if (view.EngagedWith(other) == this) continue;              // I'm his blocker: I hold my ground
                 Vector3 nrm = c.NormalFrom(this);
+                if (Vector3.Dot(original, nrm) <= 0f) continue;              // not in my way
+                if (blockers == 0) _slideN0 = nrm; else if (blockers == 1) _slideN1 = nrm;
+                blockers++;
                 float into = Vector3.Dot(want, nrm);
                 if (into > 0f) want -= nrm * into;
+            }
+            // Wedged (two bodies, the projection killed the move): take the
+            // tangent that goes round without going into the other man; if
+            // there is none, back out. A man frozen between two others was
+            // the last of the setup stalls.
+            if (blockers > 0 && want.sqrMagnitude < 0.09f * original.sqrMagnitude)
+            {
+                Vector3 best = Vector3.zero; float bestDot = -2f;
+                foreach (var n in new[] { _slideN0, _slideN1 })
+                {
+                    if (n.sqrMagnitude < 0.5f) continue;
+                    Vector3 t = Vector3.Cross(Vector3.up, n);
+                    foreach (var cand in new[] { t, -t })
+                    {
+                        bool intoOther = (_slideN0.sqrMagnitude > 0.5f && Vector3.Dot(cand, _slideN0) > 0.2f) || (_slideN1.sqrMagnitude > 0.5f && Vector3.Dot(cand, _slideN1) > 0.2f);
+                        if (intoOther) continue;
+                        float dd = Vector3.Dot(cand, original.normalized);
+                        if (dd > bestDot) { bestDot = dd; best = cand; }
+                    }
+                }
+                want = best.sqrMagnitude > 0.5f ? best * original.magnitude : -original * 0.5f;
             }
         }
         Vector3 targetVel = want * (_maxSpeed * speedScale * moveScale);
@@ -771,6 +843,7 @@ public class FootballPlayer : MonoBehaviour
 
     void Apply(float dt)
     {
+        UpdateRing();
         transform.localPosition = _pos;
         transform.localRotation = Quaternion.LookRotation(_facing, Vector3.up);
         if (_bodyT == null) return;

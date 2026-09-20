@@ -66,6 +66,7 @@ public class FootballMatch : MonoBehaviour
     public int seed = 0;                    // 0 = random every game
     [Range(0.25f, 4f)] public float simSpeed = 1f;
     public bool showPlayByPlay = true;
+    [Tooltip("Debug: draw each man's contact disc (F8 toggle).")] public bool showContactDiscs;   // appended 2026-09-20 (solid bodies)
 
     /// Phase 2: a brain to use for this team's QB slot instead of the CPU.
     [NonSerialized] public IPlayerBrain[] qbBrainOverride = new IPlayerBrain[2];
@@ -105,6 +106,7 @@ public class FootballMatch : MonoBehaviour
         public float liveSeconds;
         // Solid bodies (2026-09-20).
         public int contacts, sidesteps, setupTimeouts, engagements, blocksWonRush, blocksWonHold, pocketSamples;
+        public int wraps, armTackles, hitSquare, hitAngled, hitGlancing;
         public float maxOverlap, pushbackMetres, pocketLifeSum;
         public string maxOverlapDesc = "";
         public string Summary(int plays)
@@ -114,6 +116,7 @@ public class FootballMatch : MonoBehaviour
              + " | dead-ball avg " + (plays > 0 ? (setupSeconds / plays).ToString("0.0") : "-") + " s" + (officiated > 0 ? " | OFFICIALS SPOTTED " + officiated : "")
              + " | contacts " + contacts + " engagements " + engagements + " (rush won " + blocksWonRush + ", hold won " + blocksWonHold + ") pushback " + pushbackMetres.ToString("0") + " m"
              + " | pocket avg " + (pocketSamples > 0 ? (pocketLifeSum / pocketSamples).ToString("0.0") : "-") + " s (" + pocketSamples + " collapsed)"
+             + " | wraps " + wraps + " arm-tackles " + armTackles + " (square " + hitSquare + " angled " + hitAngled + " glancing " + hitGlancing + ")"
              + " | sidesteps " + sidesteps + " setup timeouts " + setupTimeouts + " max overlap " + maxOverlap.ToString("0.00") + " (" + maxOverlapDesc + ")";
     }
 
@@ -652,6 +655,7 @@ public class FootballMatch : MonoBehaviour
         _stats.engagements += s.engagements; _stats.blocksWonRush += s.blocksWonRush; _stats.blocksWonHold += s.blocksWonHold;
         _stats.pushbackMetres += s.pushbackMetres; if (s.maxOverlap > _stats.maxOverlap) { _stats.maxOverlap = s.maxOverlap; _stats.maxOverlapDesc = s.maxOverlapDesc ?? ""; }
         if (s.pocketLife >= 0f) { _stats.pocketSamples++; _stats.pocketLifeSum += s.pocketLife; }
+        _stats.wraps += s.wraps; _stats.armTackles += s.armTackles; _stats.hitSquare += s.hitSquare; _stats.hitAngled += s.hitAngled; _stats.hitGlancing += s.hitGlancing;
         if (clockStoppages && r.clockStops) _clockStopped = true;
         _runoffLeft = _clockStopped ? 0f : playClockRunoff;
     }
@@ -869,7 +873,7 @@ public class FootballMatch : MonoBehaviour
         float w = 300f, x = Screen.width - w - 8f, y = 8f;
         int n = FootballPlay.All.Count;
         int rows = (n + 1) / 2;
-        GUI.Box(new Rect(x, y, w, 210 + rows * 20), "Football debug (F8)");
+        GUI.Box(new Rect(x, y, w, 238 + rows * 20), "Football debug (F8)");
         y += 26;
         GUI.Label(new Rect(x + 8, y, w, 20), "Speed  [ ]"); y += 20;
         float bx = x + 8;
@@ -903,5 +907,8 @@ public class FootballMatch : MonoBehaviour
         }
         y += 28;
         if (GUI.Button(new Rect(x + 8, y, w - 16, 24), "End quarter") && _state == State.DeadBall) { _clock = 0f; }
+        y += 28;
+        bool discs = GUI.Toggle(new Rect(x + 8, y, w - 16, 20), showContactDiscs, "Contact discs (red = touching, yellow = blocking)");
+        if (discs != showContactDiscs) { showContactDiscs = discs; foreach (var p in _players) p.SetRingVisible(discs); }
     }
 }

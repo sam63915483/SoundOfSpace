@@ -1,0 +1,108 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// Coverage and the run after the catch, tick by tick (2026-09-20, solid
+// bodies): for every pass play in the first N — from the snap to the catch,
+// the intended receiver and the corner on him every 0.2 s (depth, separation,
+// contacts, speed scale); after the catch, the carrier and his two nearest
+// defenders every 0.2 s (distance, and whether each is down / diving /
+// stumbling / wrapping) until the play ends. This is how "every catch is a
+// 75-yard touchdown" gets SEEN. Copy to the scratchpad, replace
+// <scratchpad>/, run with execute_script.
+public static class CoverageProbe
+{
+    const string Out = "<scratchpad>/coverage.txt";
+    const int Plays = 16;
+
+    static string P(Vector3 v) => "(" + v.x.ToString("0.0") + "," + v.z.ToString("0.0") + ")";
+    static string State(FootballPlayer p) => (p.IsDown ? " DOWN" : "") + (p.IsDiving ? " diving" : "") + (p.IsStumbling ? " stumbling" : "") + (p.wrapping != null ? " WRAPPING" : "") + (p.IsJuking ? " juking" : "") + (p.IsHurdling ? " hurdling" : "");
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        var logs = new System.Collections.Generic.List<string>();
+        Application.LogCallback cb = (msg, stack, type) => { if (msg.StartsWith("[Football]")) logs.Add(msg); };
+        Application.logMessageReceived += cb;
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__CoverageProbe") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match");
+            mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 1000;
+            m.Boot(); m.NewGame();
+            const float dt = 1f / 60f;
+            float t = 0f, nextLog = -1f;
+            int plays = 0, logMark = 0;
+            PlayInstance last = null;
+            FootballPlayer wr = null, db = null; bool caught = false;
+            while (t < 1800f && plays <= Plays)
+            {
+                m.Simulate(dt, dt); t += dt;
+                var play = m.CurrentPlay;
+                if (play != last)
+                {
+                    if (last != null && !last.view.isKickoff)
+                    {
+                        for (int i = logMark; i < logs.Count; i++) sb.AppendLine("    " + logs[i].Substring(11));
+                        sb.AppendLine("  → " + (last.result != null ? last.result.outcome + " " + last.result.yards.ToString("+0;-0") + " yd (" + last.result.description + ")" : "?"));
+                    }
+                    logMark = logs.Count;
+                    last = play; nextLog = -1f; wr = null; db = null; caught = false;
+                    if (play != null && !play.view.isKickoff) { plays++; sb.AppendLine("\n### play " + plays + " " + (play.view.play != null ? play.view.play.name + " (" + play.formation.name + ")" : "?") + " off=" + play.view.offense.shortName + " def=" + play.defCall); }
+                }
+                if (play == null || play.view.isKickoff || play.phase != PlayInstance.Phase.Live) continue;
+                var v = play.view;
+                var carrier = v.Carrier;
+                // After the catch (or a handoff): the run.
+                if (caught || (carrier != null && carrier.role != FootballRole.QB && !v.SnapInFlight))
+                {
+                    if (!caught) { caught = true; nextLog = -1f; sb.AppendLine("  RUN by " + carrier.Label + " from depth " + v.Downfield(carrier.Pos).ToString("0.0") + " ts=" + v.timeSinceSnap.ToString("0.00")); }
+                    if (carrier == null || v.timeSinceSnap < nextLog) continue;
+                    nextLog = v.timeSinceSnap + 0.2f;
+                    FootballPlayer n1 = null, n2 = null; float d1 = 999f, d2 = 999f;
+                    for (int i = 0; i < v.players.Count; i++)
+                    {
+                        var q = v.players[i]; if (q.team == carrier.team) continue;
+                        float d = Vector3.Distance(q.Pos, carrier.Pos);
+                        if (d < d1) { n2 = n1; d2 = d1; n1 = q; d1 = d; } else if (d < d2) { n2 = q; d2 = d; }
+                    }
+                    sb.AppendLine("  ts=" + v.timeSinceSnap.ToString("0.0") + " " + carrier.Label + " depth " + v.Downfield(carrier.Pos).ToString("0.0") + " v=" + carrier.Vel.magnitude.ToString("0.0") + State(carrier)
+                                  + (n1 != null ? " | " + n1.Label + " d=" + d1.ToString("0.0") + " v=" + n1.Vel.magnitude.ToString("0.0") + State(n1) : "")
+                                  + (n2 != null ? " | " + n2.Label + " d=" + d2.ToString("0.0") + " v=" + n2.Vel.magnitude.ToString("0.0") + State(n2) : ""));
+                    continue;
+                }
+                // Before the catch: the first read, then the intended receiver.
+                if (v.BallAirborne && !v.ball.isSnap && v.ball.intendedReceiver != null && wr != v.ball.intendedReceiver) { wr = v.ball.intendedReceiver; db = null; }
+                if (wr == null && v.play != null && v.play.priority != null && v.play.priority.Length > 0) wr = v.FindRole(v.offense, FootballRole.WR, v.play.priority[0]);
+                if (wr == null) continue;
+                if (db == null) db = v.FindRole(v.defense, FootballRole.DB, wr.roleIndex);
+                if (db == null) continue;
+                if (v.timeSinceSnap > 6f || v.timeSinceSnap < nextLog) continue;
+                nextLog = v.timeSinceSnap + 0.2f;
+                string wc = "", dc = "";
+                for (int i = 0; i < v.contacts.Count; i++)
+                {
+                    var c = v.contacts[i];
+                    if (c.a == wr || c.b == wr) wc += c.Other(wr).Label + " ";
+                    if (c.a == db || c.b == db) dc += c.Other(db).Label + " ";
+                }
+                float sep = Vector3.Distance(wr.Pos, db.Pos);
+                sb.AppendLine("ts=" + v.timeSinceSnap.ToString("0.0") + " " + wr.Label + " " + P(wr.Pos) + " depth " + v.Downfield(wr.Pos).ToString("0.0") + " v=" + wr.Vel.magnitude.ToString("0.0") + (wc != "" ? " touching " + wc : "")
+                              + " | " + db.Label + " " + P(db.Pos) + " depth " + v.Downfield(db.Pos).ToString("0.0") + " v=" + db.Vel.magnitude.ToString("0.0") + (v.IsEngaged(db) ? " ENGAGED" : "") + (dc != "" ? " touching " + dc : "")
+                              + " | sep " + sep.ToString("0.0") + (v.BallAirborne && !v.ball.isSnap ? " BALL IN AIR → " + P(v.ball.catchPoint) : ""));
+            }
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally
+        {
+            Application.logMessageReceived -= cb;
+            if (root != null) Object.DestroyImmediate(root);
+            System.IO.File.WriteAllText(Out, sb.ToString());
+            Debug.Log("[CoverageProbe] written");
+        }
+    }
+}

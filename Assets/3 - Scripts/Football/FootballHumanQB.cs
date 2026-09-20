@@ -81,6 +81,7 @@ public class FootballHumanQB : MonoBehaviour
     Canvas _menuCanvas; readonly RawImage[] _cards = new RawImage[3]; readonly Image[] _cardFrames = new Image[3]; readonly TextMeshProUGUI[] _cardTitles = new TextMeshProUGUI[3];
     readonly FootballPlay[] _offer = new FootballPlay[3]; readonly FootballFormation[] _offerForm = new FootballFormation[3];
     int _menuSel; bool _menuOpen; PlayInstance _menuPlay; System.Random _menuRng = new System.Random();
+    public float shoveGain = 1f;                     // how much of a body shove reaches the real player (appended 2026-09-20)
 
     FootballMatch _match;
     Transform _fieldRoot;
@@ -333,6 +334,15 @@ public class FootballHumanQB : MonoBehaviour
         Vector3 facing = _fieldRoot.InverseTransformDirection(cam.forward); facing.y = 0f;
         Vector3 hands = _hold != null ? _fieldRoot.InverseTransformPoint(_hold.position) : pos + Vector3.up * 1.1f + facing.normalized * 0.4f;
         _slot.SyncHuman(pos, facing, hands, dt);
+        // The contact pass shoved the slot: move the real body the same way
+        // (rb.position + SyncTransforms — transform.position is overwritten by
+        // the controller; see TutorialDirector's teleport).
+        Vector3 shove = _slot.TakePendingShove();
+        if (shove.sqrMagnitude > 1e-8f)
+        {
+            var rb = _player.Rigidbody;
+            if (rb != null) { rb.position += _fieldRoot.TransformDirection(shove) * shoveGain; Physics.SyncTransforms(); }
+        }
     }
 
     void OnPlayEnded(PlayInstance.PlayResult r)

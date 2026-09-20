@@ -1,4 +1,4 @@
-# Alien Football — how it works right now (2026-09-19, pass 3)
+# Alien Football — how it works right now (2026-09-20, pass 5: solid bodies)
 
 The live reference for the football prototype. The design briefs are
 `Handoff_AlienFootball_Phase1_v1.md` (✅ BUILT — the original *why*) and
@@ -39,6 +39,7 @@ materials to Standard in place (they ship magenta otherwise).
 | `FootballTeam.cs` | Name, colour, the five 0–1 stats (blocking, passRush, coverage, qbAccuracy, speed), score, attackDir. |
 | `IPlayerBrain.cs` | The brain interface, `FootballRole` (QB WR OL DL DB LB **C S**), `BrainAction` (Throw Handoff Kick **Juke Spin Hurdle**), `PlayView` (read-only view: `SnapInFlight`, `qbExtending`, `NearestStanding`…), `BrainOutput` (move, action, `face`, `say`). |
 | `FootballBall.cs` | Analytic parabola in field space (NOT a rigidbody). `Launch`, `Snap` (centre → QB), `Fumble`, `Drop` (dead where it lands) vs `liveOnGround` (bounces, rolls, anyone can have it), `catchPoint/catchTime`, `TouchDistance`. |
+| `FootballBodies.cs` | **Solid bodies (pass 5).** Every man is a disc (radius, mass); `Resolve` separates overlapping pairs (heavier moves less, ≤ 0.12 m a tick), trades closing momentum (no bounce) and fills `PlayView.contacts`. The two formulas: `BlockDrive` (push vs hold) and `TackleHit` (closing × square). |
 | `FootballPlayer.cs` | The slot: kinematic movement, both-ways roles (`SetSide`), the timed body states — `Jump`, `FallDown`, `HardFall` (tumble onto the back), `Emote`, `StartJuke/Spin/Hurdle/Dive` — `ReachFor`, `ArmGap` (the catch test), `SetHold` + `BallHoldPoint/Rotation` (where the ball sits for a hold style), `settled`. |
 | `FootballAlienRig.cs` | Procedural animation for the Alien_Pack rigs: run cycle, reach, throw, `HoldStyle` (TwoHands / Tucked / SnapStance / ReadyHands), `EmoteKind` (ArmsUp, FirstDown, Flex, ChestThump, IncompleteWave, Point, Dejected), hurdle / dive / spin / tumble poses. Two-bone arm solve (`TwoBone`) so hands can be PUT on the ball. |
 | `FootballPlays.cs` | `FootballRoutes` (the route tree: go, seam, fade, slant, quick out, deep out, dig, shallow in, curl, hitch, comeback, post, corner, sluggo, out-and-up, zig zag, wheel, drag, deep cross, flat), `FootballFormation` (spread, spread left, trips right/left, tight), `FootballPlay` — 21 concepts weighted by down/distance, never the same call twice running. |
@@ -91,13 +92,22 @@ then tucked; anyone running with it has it tucked in the right forearm; the
 centre is in his stance over it. The ball's position and rotation come from
 the pose (`BallHoldPoint/Rotation`), so it sits in the hands.
 
-**Blocking** = sticky engagements with shed timers (`PlayInstance.BlockSlowdown`):
-a defender who runs into an offensive body is held to a shove until he sheds.
-Linemen (OL/C on DL) lock for 0.9–2.0 s ×1.6 at `_engagedScale`; **a receiver
-blocking downfield only gets a 0.45–0.9 s shove at 0.5×** (at 0.3× for 2 s no
-pursuit ever closed). Once shed, that blocker can't hold him again. The pocket
-timer (1.8–3.6 s from passRush vs blocking) frees one rusher who ignores it.
-The centre picks up whoever is loose.
+**Blocking is contact** (pass 5, `PlayInstance.ResolveEngagements`): a
+defender whose disc collides with a blocker who is between him and the ball
+is *engaged* (linemen always; anyone else only once the ball is past the line
+or in a runner's hands — a receiver running his route into his corner is not
+blocking him). The rusher pushes with `passRush`, the blocker holds with
+`blocking`, each × his mass × a 0.8–1.2 swing rolled per snap, and the pair
+moves along the rusher's line at the difference (+1.2 m/s driving the blocker
+back, −0.15 when the blocker wins: he stands him up, he doesn't carry him).
+Linemen mirror (`OLBrain`/`CenterBrain` pass-set: on his line to the ball, one
+body in front) at a lateral cap (0.55× for a tackle, 0.75× the centre);
+rushers **bull** (pinned at 0.05×, the drive moves the pair) or make a
+committed **swim** step (0.75× sideways-and-up for 0.8 s; a stalled bull
+tries one after 0.7 s; a failed swim re-pins him for 0.6 s) — whoever is
+quicker today wins the edge. A rusher past his man along the line is free by
+geometry. **The pocket has no clock**: it collapses when a free rusher has a
+clear line inside 4.5 m or a blocker is driven to within 1.5 m of the QB.
 
 **Reading the play.** After a handoff (or the QB tucking it) the defense is
 flat-footed for `PlayView.readDelay` (0.4 s pass / 0.55 s QB Power / 0.8 s
@@ -135,13 +145,21 @@ point both arms at it; the ball must pass within arm's length of a shoulder
 ineligible. After the catch the carrier runs at `CarrierSpeed` 0.88 (0.97 for a
 QB) with a 0.45 s gather.
 
-**Tackles and dives** (`PlayInstance.TickTackles`). Inside `TackleRadius` 1.5 m
-a standing lunge: misses 15% (45% if blocked, 22% from behind, +22% if the
-runner is mid-juke, +22% mid-spin, capped at `MaxMissChance` 52%). From 1.7–2.7 m
-a free defender closing at 2.5+ m/s **dives** 45% of the time: a 0.5 s committed
-lunge at 1.35× speed; contact is tested in the middle of it within `DiveReach`
-1.6 m; no contact = he is on the ground alone. A dive that connects: tackle,
-5% fumble.
+**Tackles are contact** (pass 5, `PlayInstance.TickTackles`). A tackle
+starts when a defender's disc touches the carrier's, a dive lands on it in
+its window, or — arms being longer than a disc — a man within `ArmReach`
+(0.55 m beyond the discs) who isn't being pulled away gets a hand on him.
+`hit = (2.4 + closing) × (0.2 + 0.8 × square) × mass`, ±15 %; `square` is
+how head-on the contact is to the runner's line (1 from straight behind or in
+front, 0 glancing). `hit ≥ 2.3` = the **wrap** (drag for a stride, pile-on
+by touch, and a break judged once at the midpoint: the runner's momentum vs
+`hit × 3.8`); below it is an **arm tackle** — the runner stumbles through, a
+body that missed falls past him, a reach that slipped only costs the chaser
+half a second. A juke or spin misses because the body moved and the contact
+went glancing, not because a state added a percentage. A blocked man can only
+arm-tackle. Dives from 1.7–2.7 m need the gap to be closing (0.4 m/s); a hurdle
+lifts the disc over a diver (the clip rule stays). A big hit jars the ball
+loose in proportion to `hit`.
 
 **The carrier's moves** (`BallCarrierBrain`, on a 1.1 s cooldown, odds scaled by
 the team's `speed`): a man square in front 1.7–3.6 m away → **juke** (45%×) to
@@ -263,8 +281,9 @@ Soak: 14–21, 14–28, 14–21 · 67–76 plays · 4–7 sacks · 4–5 INT (st
 high) · 13 punts / 3 games · 4–6 broken tackles, ~35 pile-ons, 8–10 contested
 balls a game · 3–4 fumbles (lost 3 — watch this).
 
-**Ideas not built yet, in the order they'd pay off:** press-release moves at
-the line (swim/rip vs a jam) · a stiff-arm as a third open-field move ·
+**Ideas not built yet, in the order they'd pay off:** balance the solid-body
+game (see Pass 5) · stage 4: batted balls at the line, a loose ball off legs,
+downed bodies stepped over · press-release moves at the line (swim/rip vs a jam) ·
 stumble-on-contact and a real fall pose per hit direction · speed vs sharp
 cuts and receivers looking back late on a comeback · DB ball skills (play the
 hands, not the man, when beaten) · a play sheet per team with tendencies the
@@ -374,6 +393,60 @@ line in one grep — read it before theorising about a build-only bug.
 **Not yet verified by a human hand:** the throw charge / arc feel, the hotbar
 icon, the ball's position in the hands, the knockdown, receivers catching your
 throws. All of it needs Sam's playtest.
+
+## Pass 5 (2026-09-20) — solid bodies
+
+Sam after the Phase 2 playtest: "the aliens aren't solid, I can just walk
+through them, and they can just walk through each other … make the football
+game more physics oriented … blocking is still as shitty as ever." Spec:
+`superpowers/specs/2026-09-20-football-solid-bodies-design.md`; plan:
+`superpowers/plans/2026-09-20-football-solid-bodies.md`.
+
+- **`FootballBodies.cs`**: every man is a disc (linemen 0.50 m / 1.25 mass,
+  LB/S 0.45 / 1.10, skill 0.42 / 1.00; a downed man 0.55 and immovable). Once
+  per step, after the brains and before the tackles (and every step of the
+  dead ball), overlapping pairs separate (≤ 0.12 m a tick — never a pop),
+  closing momentum is traded (no bounce) and a `BodyContact` list lands on
+  `PlayView.contacts`. Solid in every phase.
+- **Bodies slide** (`FootballPlayer.Tick`): a man runs along a body in his
+  way instead of through it — except a tackler on the carrier, the carrier on
+  a tackler, and an engaged blocker holding his ground. Wedged between two
+  men he takes the tangent that goes round, or backs out.
+- **Setup**: `MoveToBrain` steps round a man in the way after 0.08 s and
+  settles a stride short of a spot somebody is already standing on (only a man
+  who is truly on his own spot — two men "settled" on each other 16 m from
+  their spots was a deadlock). Errands (fetch the ball, carry it to the
+  centre) never settle. A **setup timeout now logs who is late and why**
+  (`DebugSetupState`): today every one is a lineman jogging 60 m from the
+  touchdown celebration to a kickoff.
+- **Blocking / the pocket / tackles**: see the rules above. Gone:
+  `BlockSlowdown`, the engagement timers and shed list, `_engagedScale`, the
+  pocket clock and `DLBrain.free`, `TackleRadius` and every `MissedTackle*`
+  dice, `BreakTackleChance`.
+- **The human**: the slot is a disc; a shove reaches the rigidbody
+  (`FootballHumanQB.shoveGain`); every alien carries a kinematic capsule on
+  layer 10 so you can't walk through them (off while the slot is you).
+- **F8 → Contact discs**: a ring per man at his disc edge (red touching,
+  yellow blocking).
+- **Poses**: the spine leans into a shove (`FootballAlienRig.lean`).
+- **Contests**: a defender with his arms up (`IsReaching`) gets his full
+  reach less `DefenderReachPenalty` (0.35 m) — with solid bodies no corner
+  could otherwise get a hand on a ball in a receiver's hands.
+- **Tools** (`tools/football/`): `ContactDrill` (the separation pass + the two
+  formula tables), `LineProbe` (the pass rush tick by tick: move, who has
+  him, when the pocket went), `CoverageProbe` (receiver vs corner to the
+  catch, then the carrier and his two nearest chasers to the whistle). The
+  soak summary carries contacts / engagements (rush won, hold won) /
+  pushback / pocket life / wraps vs arm-tackles by angle / sidesteps / setup
+  timeouts / max overlap. The analyzer asserts no standing pair overlaps.
+
+**Balance, honestly (soak, 3 games, seeds 1000–1002):** 28–14, 28–49, 35–56 · 66–74 plays · 55–62 % completions · 9.6–15.7 yds/play · 3–5 INT · 0–1 sacks · pocket collapsed 6–8 times a game (avg 2.1–2.5 s) · 343–423 engagements (rush won ~60 %) · 40–46 wraps, 10–17 arm tackles · 2–8 contested · dead ball 21–24 s · setup timeouts 5–13, all kickoffs · max standing overlap 0 (analyzer). Pass 4 for comparison: 14–28 points, 4–7 sacks, 4–5 INT, ~19 s dead ball.
+The physics is in and every diagnostic is green; the football balance is not
+back to pass 4 (14–28 points) yet — the levers are listed in the memory note
+and the probes above show exactly where a play goes. Two things are known and
+cosmetic: men converging on the touchdown celebration briefly overlap and are
+pushed apart over a few ticks, and a man standing up out of a pile slides out
+over ~0.2 s.
 
 ## Numbers from the last headless soak (pass 2) (3 games, seeds 1000–1002)
 

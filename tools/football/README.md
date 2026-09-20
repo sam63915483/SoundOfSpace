@@ -23,6 +23,18 @@ script" mechanism). None of them enter play mode — Sam runs every playtest.
   a pass-by-pass diagnosis (caught / dropped / defended / off target / picked,
   by depth) to `analysis.txt`. Takes ~90 s (the execute_script call times out
   at 60 s; the file still lands — poll for it).
+- `ContactDrill.cs.txt` — solid bodies (pass 5): two discs pushed together
+  come out separated with one contact and the momentum traded; a downed man
+  is immovable; tables of `BlockDrive` (pass rush × blocking) and `TackleHit`
+  (closing × angle) against the wrap threshold. Instant.
+- `LineProbe.cs.txt` — the pass rush tick by tick for the first 14 plays:
+  each rusher's move (bull / SWIM), who has him, his speed scale, distance to
+  the QB, when the pocket collapsed, how the play ended (`line.txt`). Use it
+  for "they get round the line too fast / never".
+- `CoverageProbe.cs.txt` — receiver vs corner every 0.2 s to the catch, then
+  the carrier and his two nearest chasers (down / diving / stumbling /
+  wrapping) to the whistle, plus that play's log lines (`coverage.txt`). Use
+  it for "every catch is a 75-yard touchdown".
 - `PoseCheck.cs.txt` — instantiates 14 aliens in rig states (idle, run, reach,
   throw, carry, kick, two hands, snap stance, ready, hurdle, dive, arms up,
   flex, first down), calls the rig's LateUpdate by reflection, draws the ball at

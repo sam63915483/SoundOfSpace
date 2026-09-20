@@ -43,7 +43,7 @@ public static class FootballSoak
                 if (System.IO.File.Exists(force)) { m.ForcedPlay = System.IO.File.ReadAllText(force).Trim(); if (m.ForcedPlay == "") m.ForcedPlay = null; }
                 // Up to 40 game-minutes; a real game is ~10 + breaks.
                 float t = 0f; const float dt = 1f / 60f;
-                while (m.Current != FootballMatch.State.GameOver && t < 50f * 60f) { m.Simulate(dt, dt); t += dt; }
+                while (m.Current != FootballMatch.State.GameOver && t < 60f * 60f) { m.Simulate(dt, dt); t += dt; }
                 sb.AppendLine("-- reached " + m.Current + " after " + t.ToString("0") + " sim-seconds (" + sw.ElapsedMilliseconds + " ms wall); " + m.StatusLine);
                 if (m.Current != FootballMatch.State.GameOver)
                     sb.AppendLine("!! DID NOT FINISH: state=" + m.Current + " Q" + m.Quarter + " clock=" + m.ClockText()

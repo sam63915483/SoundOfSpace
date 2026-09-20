@@ -111,7 +111,9 @@ public class MoveToBrain : IPlayerBrain
     public bool KeepsControlWhenCarrying => true;
     /// There, or as near as the bodies allow (a spot somebody is standing on;
     /// the ring of a huddle) — a man kept walking into an occupied spot for ever.
-    public bool Arrived(FootballPlayer self) => Vector3.Distance(self.Pos, target) < Steer.ArriveRadius + stopShort || (_settledFor == target && _settled);
+    public bool Arrived(FootballPlayer self) => TrulyThere(self) || (_settledFor == target && _settled);
+    /// On the spot itself (not settled short of it).
+    public bool TrulyThere(FootballPlayer self) => Vector3.Distance(self.Pos, target) < Steer.ArriveRadius + stopShort;
     /// A spot (huddle, formation) can be taken by a man standing on it — then
     /// stop a stride short. An errand (fetch the ball, carry it to the centre)
     /// never settles: PlayInstance turns this off for those.
@@ -156,7 +158,11 @@ public class MoveToBrain : IPlayerBrain
         if (settleWhenBlocked && blocked && _blockedFor > 0.08f && dist < Steer.ArriveRadius + stopShort + 1.2f)
         {
             var other = block.Other(self);
-            if (!other.IsDown && other.Vel.sqrMagnitude < 0.25f)          // he is standing there: that spot is taken
+            // He is standing there for good: on his own spot, or with nowhere
+            // to go. Two men each waiting for the other to move (both "settled"
+            // on each other, 16 m from their spots) was a deadlock.
+            bool otherThere = other.brain is MoveToBrain ob ? ob.TrulyThere(other) : true;
+            if (!other.IsDown && other.Vel.sqrMagnitude < 0.25f && otherThere)
             {
                 _settled = true; _settledFor = target; _settledBlocker = other; _settledBlockerPos = other.Pos;
                 o.move = Vector3.zero; return;

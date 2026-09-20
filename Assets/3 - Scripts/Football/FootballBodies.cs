@@ -36,8 +36,8 @@ public static class FootballBodies
     public const float SwimDriveScale = 0.5f;     // swimming, he pushes at half strength
 
     // Tackling: hit quality (spec §3).
-    public const float TackleBase = 1.5f;         // a tackler on him at no closing speed still has this much
-    public const float WrapThreshold = 2.0f;      // hit ≥ this is a wrap; below is an arm tackle
+    public const float TackleBase = 2.4f;         // a tackler on him at no closing speed still has this much (a grab from behind drags him down ~3 times in 4)
+    public const float WrapThreshold = 2.3f;      // hit ≥ this is a wrap; below is an arm tackle
 
     public static float RadiusFor(FootballRole role)
         => role == FootballRole.OL || role == FootballRole.DL || role == FootballRole.C ? 0.50f
@@ -58,7 +58,7 @@ public static class FootballBodies
     /// `closing` m/s along the contact normal, `square` 0..1 (1 = met head-on
     /// or from straight behind, 0 = glancing), `mass` the tackler's.
     public static float TackleHit(float closing, float square, float mass)
-        => (TackleBase + Mathf.Max(0f, closing)) * (0.25f + 0.75f * square) * mass;
+        => (TackleBase + Mathf.Max(0f, closing)) * (0.2f + 0.8f * square) * mass;
 
     /// The pass. `contacts` is cleared and refilled.
     public static void Resolve(IReadOnlyList<FootballPlayer> players, List<BodyContact> contacts)
