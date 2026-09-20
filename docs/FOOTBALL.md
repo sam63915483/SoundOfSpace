@@ -309,6 +309,14 @@ by that name gives a white capsule. Your live body and the green cylinder are
 in the replay camera's hide list (`FootballHumanQB.LiveRenderers`), otherwise
 the live you stands on the field inside the replay. The charge is 3 s.
 
+**Playing the ball (round 3b):** jumps and layouts are decided from where the
+ball WILL be a jump's rise (0.28 s) from now — `PlayInstance.PlayTheBall` — for
+the intended man, the nearest defender and any offensive man within 3 m. Over
+his head (2.0–3.1 m, within 1.4 m sideways) = jump; landing short or wide
+(1.4–2.9 m) with under half a second left = dive. The old rule only jumped a
+man already standing within 2.5 m of the catch spot in a 0.1 s window, so a
+receiver a step short let catchable balls sail over him.
+
 **Controls while you are QB:** move and sprint as normal (Shift), scaled to
 0.8 so the aliens can catch you. F is only the sideline button. LMB = charge /
 throw. **Backspace** skips whatever is making you wait: a replay is cut, a

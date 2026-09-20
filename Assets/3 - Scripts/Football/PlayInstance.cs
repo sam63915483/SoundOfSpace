@@ -1227,12 +1227,19 @@ public class PlayInstance
                 // Go up for it: the intended man and the nearest defender to
                 // the spot, just before it gets there.
                 float left = _ball.catchTime - _ball.airTime;
-                if (!_ball.isKick && !_ball.isSnap && left < JumpLead && left > JumpLead - 0.1f)
+                if (!_ball.isKick && !_ball.isSnap && left > 0.02f)
                 {
+                    // Judged on where the ball WILL be a jump's rise from now, not on
+                    // standing at the catch spot (Sam: a wide-open man let a high ball
+                    // sail over him because he was still a step short of the spot).
+                    float ahead = Mathf.Min(0.28f, left);
+                    Vector3 future = _ball.pos + _ball.vel * ahead + Vector3.down * (0.5f * FootballBall.Gravity * ahead * ahead);
                     var wr = _ball.intendedReceiver;
-                    if (wr != null && Vector3.Distance(wr.Pos, _ball.catchPoint) < 2.5f) wr.Jump();
-                    var db = view.Nearest(_ball.catchPoint, view.defense);
-                    if (db != null && Vector3.Distance(db.Pos, _ball.catchPoint) < 2.2f) db.Jump();
+                    PlayTheBall(wr, future, ahead, left);
+                    var db = view.Nearest(future, view.defense);
+                    PlayTheBall(db, future, ahead, left);
+                    foreach (var q in _players)
+                        if (q != wr && q != db && q.team == view.offense && Vector3.Distance(q.Pos, future) < 3f) PlayTheBall(q, future, ahead, left);
                 }
 
                 // The ball has to touch someone's arms (Sam). Whoever it
@@ -1440,6 +1447,21 @@ public class PlayInstance
         if (phase != Phase.Ended) return;
         for (int i = 0; i < _players.Count; i++) _players[i].Tick(view, dt);
         _ball.Tick(dt);
+    }
+
+    /// Go up or lay out for a ball in the air. `future` is where the ball will
+    /// be in `ahead` seconds (a jump's rise). Standing hands reach about 2.2 m;
+    /// a jump adds 0.7. A ball coming down short or wide of him with no time
+    /// left to run there gets a dive (the dive's reach is tested by ArmGap on
+    /// the posed shoulders like any other catch).
+    void PlayTheBall(FootballPlayer p, Vector3 future, float ahead, float left)
+    {
+        if (p == null || p.IsDown || p.IsJumping || p.IsDiving || p.IsHurdling) return;
+        if (p.role == FootballRole.OL || p.role == FootballRole.C || p.role == FootballRole.DL) return;
+        Vector3 me = p.Pos + p.Vel * ahead;
+        float h = new Vector2(future.x - me.x, future.z - me.z).magnitude;
+        if (future.y > 2.0f && future.y < 3.1f && h < 1.4f) { p.Jump(); return; }
+        if (left < 0.5f && future.y < 1.4f && h > 1.4f && h < 2.9f) { p.StartDive(future - p.Pos); _stats.dives++; }
     }
 
     /// Human QB: the play he picked in the huddle. Receivers, their routes and
