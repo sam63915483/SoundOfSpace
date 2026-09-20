@@ -521,6 +521,18 @@ public class FootballMatch : MonoBehaviour
     /// The kickoff play: kicking team = whoever isn't in possession.
     List<FootballPlayer> _party; Vector3 _partyCentre;
 
+    /// Backspace: skip the wait — a running replay is cut, a kickoff / punt ends as a
+    /// touchback, a huddle breaks now. One press per thing.
+    public void Skip()
+    {
+        if (_broadcast == null) _broadcast = FindObjectOfType<FootballBroadcast>();
+        if (_broadcast != null && _broadcast.Replaying) { _broadcast.SkipReplay(); return; }
+        if (_play == null || _play.phase == PlayInstance.Phase.Ended) return;
+        if (_play.view.isKickoff) _play.SkipKickoff();
+        else if (_play.phase == PlayInstance.Phase.Setup) _play.skipHuddle = true;
+    }
+    FootballBroadcast _broadcast;
+
     void PrepareKickoff()
     {
         var kicking = Other(_possession);
@@ -805,6 +817,7 @@ public class FootballMatch : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.F8)) _panel = !_panel;
         if (Input.GetKeyDown(KeyCode.F7)) showPlayByPlay = !showPlayByPlay;
+        if (Input.GetKeyDown(KeyCode.Backspace)) Skip();     // N is the build menu in the main game
         if (Input.GetKeyDown(KeyCode.LeftBracket))  simSpeed = Mathf.Max(0.25f, simSpeed * 0.5f);
         if (Input.GetKeyDown(KeyCode.RightBracket)) simSpeed = Mathf.Min(4f, simSpeed * 2f);
     }

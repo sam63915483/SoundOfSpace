@@ -60,6 +60,11 @@ public class CameraTransformFX : MonoBehaviour
     float _tiltZ;
     float _deathTiltT;
     bool _isDying;
+    // Knockdown (football tackle, 2026-09-19): the view drops and tips the way
+    // the hit sent the player, holds, then comes back up. Direction is captured
+    // in the player's frame at the hit (x = sideways, z = forward).
+    float _kdT = -1f, _kdHold; Vector3 _kdDir = Vector3.forward;
+    const float KdFall = 0.35f, KdRise = 0.6f;
 
     // ── Third-person view (experiment, 2026-09-15) ─────────────────
     // V cycles first person → close → far → first person. The camera orbits
@@ -281,12 +286,30 @@ public class CameraTransformFX : MonoBehaviour
         // by PlayerController (render rate, eased). Zero out of water.
         float swimRoll = _player != null ? _player.SwimCameraRoll : 0f;
         Vector3 swimBob = _player != null ? Vector3.up * _player.SwimCameraBob : Vector3.zero;
-        Quaternion camLocalRot = Quaternion.Euler(livePitch, 0f, _tiltZ + deathRoll + swimRoll);
+        // ── Knockdown: fall (ease out), lie there, get back up.
+        float kdPitch = 0f, kdRoll = 0f, kdDrop = 0f;
+        if (_kdT >= 0f)
+        {
+            _kdT += dt;
+            float a;
+            if (_kdT < KdFall) a = EaseOutCubic(_kdT / KdFall);
+            else if (_kdT < KdFall + _kdHold) a = 1f;
+            else
+            {
+                float u = (_kdT - KdFall - _kdHold) / KdRise;
+                a = u >= 1f ? 0f : 1f - EaseOutCubic(u);
+                if (u >= 1f) _kdT = -1f;
+            }
+            kdRoll = -_kdDir.x * 75f * a;       // negative = fall to the RIGHT (same sign as the death tilt)
+            kdPitch = _kdDir.z * 55f * a;       // forward = face into the turf, backward = looking at the sky
+            kdDrop = 1.05f * a;                 // eye height down to about half a metre
+        }
+        Quaternion camLocalRot = Quaternion.Euler(livePitch + kdPitch, 0f, _tiltZ + deathRoll + swimRoll + kdRoll);
         Quaternion lookRot = smoothPlayerRot * camLocalRot;
 
         // Player position is already interpolated by Unity (Rigidbody.Interpolate);
         // reading transform.position returns the smoothed visual value.
-        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * (_camBaseLocalPos + swimBob);
+        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * (_camBaseLocalPos + swimBob + Vector3.down * kdDrop);
 
         // ── Third person: orbit the head by the look rotation, pull in on
         //    collision, aim a little ahead of the head so the astronaut sits
@@ -333,6 +356,18 @@ public class CameraTransformFX : MonoBehaviour
 
     public void TriggerDeathTilt() { _isDying = true; }
     public void ClearDeathTilt()   { _isDying = false; }
+
+    /// Knock the view over in a world direction (the way the hit pushed the
+    /// player), hold it down for `holdSeconds`, then stand it back up.
+    public void TriggerKnockdown(Vector3 worldHitDir, float holdSeconds)
+    {
+        Transform pt = _playerTransform != null ? _playerTransform : (_player != null ? _player.transform : null);
+        if (pt == null) return;
+        Vector3 local = Quaternion.Inverse(pt.rotation) * worldHitDir; local.y = 0f;
+        _kdDir = local.sqrMagnitude > 1e-4f ? local.normalized : Vector3.forward;
+        _kdHold = Mathf.Max(0.2f, holdSeconds);
+        _kdT = 0f;
+    }
 
     /// Called when the player teleports (e.g. exiting the pilot seat onto
     /// the ship's pilotSeatPoint). The interpolation buffer would

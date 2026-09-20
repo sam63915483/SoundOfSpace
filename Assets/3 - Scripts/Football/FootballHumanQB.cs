@@ -44,6 +44,7 @@ public class FootballHumanQB : MonoBehaviour
     Transform _fieldRoot;
     PlayerController _player;
     Transform _hold;
+    CameraTransformFX _camFx;
     FootballPlayer _slot;
     HumanQBBrain _brain;
     GameObject _button, _cylinder;
@@ -273,6 +274,12 @@ public class FootballHumanQB : MonoBehaviour
         if (r.outcome == PlayInstance.Outcome.Run || r.outcome == PlayInstance.Outcome.Sack || r.outcome == PlayInstance.Outcome.Fumble || r.outcome == PlayInstance.Outcome.Whistle)
         {
             _downUntil = Time.time + knockdownSeconds;
+            // Fall the way the hit sent you: away from the tackler (or straight ahead).
+            Vector3 hit = r.tackler != null ? _slot.Pos - r.tackler.Pos : Vector3.zero; hit.y = 0f;
+            Vector3 world = hit.sqrMagnitude > 1e-3f ? _fieldRoot.TransformDirection(hit.normalized)
+                : (_player.Camera != null ? _player.Camera.transform.forward : _player.transform.forward);
+            if (_camFx == null) _camFx = FindObjectOfType<CameraTransformFX>();
+            if (_camFx != null) _camFx.TriggerKnockdown(world, Mathf.Max(0.3f, knockdownSeconds - 0.7f));
             InteractPromptUI.ShowOneShot(r.outcome == PlayInstance.Outcome.Sack ? "Sacked!" : "Tackled", 1.5f);
         }
         else if (r.touchdown) InteractPromptUI.ShowOneShot("TOUCHDOWN!", 3f);

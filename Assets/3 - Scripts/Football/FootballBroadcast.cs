@@ -288,7 +288,7 @@ public class FootballBroadcast : MonoBehaviour
         var players = _match.Players;
         if (_liveCount == players.Count) return;
         _liveRenderers.Clear();
-        foreach (var p in players) _liveRenderers.AddRange(p.GetComponentsInChildren<Renderer>(true));
+        foreach (var p in players) { if (p.humanDriven) continue; _liveRenderers.AddRange(p.GetComponentsInChildren<Renderer>(true)); }   // the player's slot stays hidden (its alien popped back over the astronaut every replay)
         var play = _match.CurrentPlay;
         if (play != null && play.view.ball != null) _liveRenderers.AddRange(play.view.ball.GetComponentsInChildren<Renderer>(true));
         _liveCount = players.Count;
@@ -684,6 +684,9 @@ public class FootballBroadcast : MonoBehaviour
         if (slow) fov = Mathf.Lerp(fov, Mathf.Min(fov, Mathf.Max(slowMoFov, fov * 0.85f)), Mathf.InverseLerp(1f, _slowSpeed, speed));      // push in with the slow-mo
         AimAt(focus, Mathf.Max(fov, 6f), dt);
     }
+
+    /// Test key: cut the replay now (the huddle it was holding breaks).
+    public void SkipReplay() { if (_replaying) EndReplay(); }
 
     void EndReplay()
     {

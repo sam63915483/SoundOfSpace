@@ -293,6 +293,15 @@ lands in the hotbar (auto-equipped) and sits in front of the camera. Then:
   sacked plants you for 1.6 s and ends the play; the ball is set at your feet
   for the centre. Your stride is scaled to 0.8 so you can be caught.
 
+**Controls while you are QB:** move and sprint as normal (Shift), scaled to
+0.8 so the aliens can catch you. F is only the sideline button. LMB = charge /
+throw. **Backspace** skips whatever is making you wait: a replay is cut, a
+kickoff or punt ends as a touchback, a huddle breaks at once (one press each).
+A tackle knocks the camera over the way the hit sent you (away from the
+tackler), holds it down, and stands it back up as control returns
+(`CameraTransformFX.TriggerKnockdown`). In third person the astronaut body
+stays upright — only the view falls.
+
 **How it is wired (nothing new in the sim):** `FootballHumanQB` (made by
 `FootballMatch.Boot`, play mode only) owns the button, cylinder, aim visuals,
 hotbar entry and input. `FootballMatch.PrepareScrimmage` hands the away QB slot
@@ -316,6 +325,10 @@ registry row (`Hotbar.ItemId.Football`) with a code-drawn icon.
 - A test driver that sets `transform.position` on the player does nothing (the
   controller re-applies the rigidbody). Teleport with `rb.position` +
   `Physics.SyncTransforms()` like `TutorialDirector` does.
+- The jumbotron replay hides every live alien for its own render and turned
+  them all back on afterwards — including the one hidden for the human slot, so
+  an alien stood on top of the astronaut during every replay. `CollectLive`
+  skips `humanDriven` players now.
 - Nothing waits on a timer for you: the play sits at `Setup` until you reach
   the cylinder. Walking away from the cylinder is how you stall the game.
 

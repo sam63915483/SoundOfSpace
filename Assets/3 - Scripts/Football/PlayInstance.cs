@@ -215,6 +215,8 @@ public class PlayInstance
     public bool holdBreak;
     /// Trailing late: the huddle is a two-second breather, not nine.
     public bool hurryUp;
+    /// Test key: break the huddle the moment it is set (or now, if it is still gathering).
+    public bool skipHuddle;
     /// True while both sides are in their huddles (the replay window).
     public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
     /// Seconds until the huddle breaks (an upper bound while men are still
@@ -479,7 +481,7 @@ public class PlayInstance
                 {
                     if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
                     bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= (hurryUp ? 2f : HuddleHold) && (!holdBreak || hurryUp);
-                    if (held || _phaseTime > HuddleTimeout)
+                    if (held || _phaseTime > HuddleTimeout || skipHuddle)
                     {
                         _broke = true; all = false; _phaseTime = 0f;
                         foreach (var kv in _formation)
@@ -1433,6 +1435,15 @@ public class PlayInstance
         if (phase != Phase.Ended) return;
         for (int i = 0; i < _players.Count; i++) _players[i].Tick(view, dt);
         _ball.Tick(dt);
+    }
+
+    /// Test key: a kickoff or punt ends now as a touchback (25 / 20).
+    public void SkipKickoff()
+    {
+        if (!view.isKickoff || phase == Phase.Ended) return;
+        if (_ball.state == FootballBall.State.Airborne) _ball.Place(new Vector3(_ball.pos.x, 0f, _ball.pos.z));
+        log?.Invoke((isPunt ? "Punt" : "Kickoff") + " skipped");
+        End(Outcome.Touchback, 0f, view.defense, null);
     }
 
     void End(Outcome outcome, float spotZ, FootballTeam possession, FootballPlayer carrier, FootballPlayer tackler = null)
