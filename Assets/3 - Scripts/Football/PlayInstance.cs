@@ -61,6 +61,9 @@ public class PlayInstance
         public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, fumbles, fumblesLost, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, brokenTackles, contested, tips, stiffArms, stumbles;
         public bool officialsSpottedBall;
         public float setupSeconds;
+        // Solid bodies (2026-09-20).
+        public int contacts, sidesteps, setupTimeouts;
+        public float maxOverlap;
     }
 
     public const float TackleRadius = 1.5f;     // an arm's reach / a dive
@@ -478,6 +481,7 @@ public class PlayInstance
                     if (!here || p.IsEmoting) all = false;
                     p.SetStance(here ? StanceFor(p) : Stance.None);
                 }
+                ResolveBodies();
                 _othersSet = all;
                 // The huddle: once everyone is in it, it HOLDS (the play call, the
                 // replay on the screens), then breaks. Or it's taken too long.
@@ -518,6 +522,8 @@ public class PlayInstance
                     }
                     else _kicker.SetHold(HoldStyle.TwoHands);
                     _stats.setupSeconds = _setupSeconds;
+                    if (!all) _stats.setupTimeouts++;
+                    foreach (var p in _players) { _stats.sidesteps += p.sidesteps; p.sidesteps = 0; }
                     phase = Phase.PreSnap; _phaseTime = 0f;
                 }
                 _ball.Tick(dt);
@@ -742,6 +748,7 @@ public class PlayInstance
             if (o.say != null) log?.Invoke(o.say);
             if (o.action != BrainAction.None) DoAction(p, o);
         }
+        ResolveBodies();
         // Blocking is CONTACT (Sam: the rush was sliding through the line a
         // foot at a time): an engaged rusher is held out at arm's length from
         // his blocker, so he has to work round him or wait to shed.
@@ -1043,6 +1050,14 @@ public class PlayInstance
                 log?.Invoke(db.team.shortName + " " + db.Label + " jams " + wr.Label + " at the line");
             }
         }
+    }
+
+    /// The contact pass: after everyone has moved, before anything is judged.
+    void ResolveBodies()
+    {
+        for (int i = 0; i < _players.Count; i++) _players[i].inContact = false;
+        FootballBodies.Resolve(_players, view.contacts);
+        for (int i = 0; i < view.contacts.Count; i++) { _stats.contacts++; _stats.maxOverlap = Mathf.Max(_stats.maxOverlap, view.contacts[i].overlap); }
     }
 
     /// The whole blocking model (handoff §6), no contact: a defender who runs

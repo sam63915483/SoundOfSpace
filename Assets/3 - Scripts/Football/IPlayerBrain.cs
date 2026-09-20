@@ -82,6 +82,22 @@ public class PlayView
     /// Which side of the field (attack-relative sign of x) the QB is working toward.
     public float qbExtendSide;
 
+    /// Every disc contact this tick (FootballBodies.Resolve). Rebuilt each step.
+    public readonly List<BodyContact> contacts = new List<BodyContact>();
+    readonly Dictionary<FootballPlayer, FootballPlayer> _engaged = new Dictionary<FootballPlayer, FootballPlayer>();
+    /// The blocker holding this man this tick, or null. (Replaces every `speedScale < 0.5f` read.)
+    public FootballPlayer EngagedWith(FootballPlayer p) => p != null && _engaged.TryGetValue(p, out var b) ? b : null;
+    public bool IsEngaged(FootballPlayer p) => p != null && _engaged.ContainsKey(p);
+    public void ClearEngaged() => _engaged.Clear();
+    public void SetEngaged(FootballPlayer defender, FootballPlayer blocker) => _engaged[defender] = blocker;
+    /// The contact between `p` and `q` this tick, if any.
+    public bool ContactBetween(FootballPlayer p, FootballPlayer q, out BodyContact c)
+    {
+        for (int i = 0; i < contacts.Count; i++)
+            if ((contacts[i].a == p && contacts[i].b == q) || (contacts[i].a == q && contacts[i].b == p)) { c = contacts[i]; return true; }
+        c = default; return false;
+    }
+
     /// Whoever holds the ball right now, or null while it is airborne / loose.
     public FootballPlayer Carrier => ball != null ? ball.holder : null;
     public bool BallAirborne => ball != null && ball.state == FootballBall.State.Airborne;

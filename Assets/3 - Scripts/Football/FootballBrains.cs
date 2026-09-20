@@ -113,6 +113,7 @@ public class MoveToBrain : IPlayerBrain
     /// Once there, turn to look at this point (the man in the middle of the huddle).
     public void SetFace(Vector3 point) { _face = point; _hasFace = true; }
     public void ClearFace() { _hasFace = false; }
+    float _blockedFor;
     public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
     {
         // A jog for a short walk, quicker when the spot is far (the kickoff
@@ -122,7 +123,31 @@ public class MoveToBrain : IPlayerBrain
         if (dist < stopShort) { o.move = Vector3.zero; return; }
         float far = Mathf.Clamp01((dist - 15f) / 30f);
         float pace = hurry ? 0.92f : Mathf.Lerp(0.78f, 0.92f, far);
-        o.move = Steer.To(self.Pos, target, 2f + stopShort) * pace;
+        Vector3 move = Steer.To(self.Pos, target, 2f + stopShort) * pace;
+        // A body in the way for more than a beat: step round it (bodies are
+        // solid now; two men walking to spots through each other used to pass).
+        BodyContact block = default; bool blocked = false;
+        if (move.sqrMagnitude > 1e-4f)
+        {
+            Vector3 dir = move.normalized;
+            for (int i = 0; i < view.contacts.Count; i++)
+            {
+                var c = view.contacts[i];
+                if (c.a != self && c.b != self) continue;
+                if (Vector3.Dot(c.NormalFrom(self), dir) > 0.5f) { block = c; blocked = true; break; }
+            }
+        }
+        float before = _blockedFor;
+        _blockedFor = blocked ? _blockedFor + dt : 0f;
+        if (blocked && _blockedFor > 0.3f)
+        {
+            Vector3 n = block.NormalFrom(self);
+            Vector3 tangent = Vector3.Cross(Vector3.up, n);
+            if (Vector3.Dot(tangent, target - self.Pos) < 0f) tangent = -tangent;
+            move = (tangent * 0.8f + move.normalized * 0.3f).normalized * pace;
+            if (before <= 0.3f) self.sidesteps++;
+        }
+        o.move = move;
     }
 }
 

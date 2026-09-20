@@ -82,7 +82,7 @@ public static class FootballAnalyzer
                         float turned = Vector3.Angle(p.Facing, tr.facing);
                         if (turned > FaceSnapDeg && !p.IsDiving) Flag("facing snap > " + FaceSnapDeg + "°/tick", p.name + " turned " + turned.ToString("0") + "° at " + t.ToString("0.0") + " s (" + play.phase + ")");
                         tr.stillFor = moved < 0.002f ? tr.stillFor + dt : 0f;
-                        if (live && tr.stillFor > 2.5f && !p.IsDown && !p.IsEmoting && p.CurrentStance == Stance.None) { Flag("frozen mid-play > 2.5 s", p.name + " (" + p.role + ") still at " + t.ToString("0.0") + " s in " + (v.play != null ? v.play.name : "kickoff")); tr.stillFor = 0f; }
+                        if (live && tr.stillFor > 2.5f && !p.IsDown && !p.IsEmoting && !p.blocking && p.CurrentStance == Stance.None) { Flag("frozen mid-play > 2.5 s", p.name + " (" + p.role + ") still at " + t.ToString("0.0") + " s in " + (v.play != null ? v.play.name : "kickoff")); tr.stillFor = 0f; }
                     }
                     tr.pos = p.Pos; tr.facing = p.Facing; tr.init = true;
                     if (Mathf.Abs(p.Pos.x) > FootballField.HalfWidth + 0.5f || Mathf.Abs(p.Pos.z) > FootballField.EndLineZ + 0.5f)
@@ -109,9 +109,11 @@ public static class FootballAnalyzer
                 var ps = m.Players;
                 for (int i = 0; i < ps.Count; i++) for (int j = i + 1; j < ps.Count; j++)
                 {
-                    if (ps[i].IsDown || ps[j].IsDown) continue;
+                    if (ps[i].IsDown && ps[j].IsDown) continue;
+                    if (ps[i].humanDriven || ps[j].humanDriven) continue;
                     float d = Vector3.Distance(ps[i].Pos, ps[j].Pos);
-                    if (d < 0.35f && live && ticks % 30 == 0) Flag("bodies overlapping < 0.35 m", ps[i].name + " / " + ps[j].name + " " + d.ToString("0.00") + " m at " + t.ToString("0.0") + " s");
+                    float minD = (ps[i].IsDown ? FootballBodies.DownRadius : ps[i].BodyRadius) + (ps[j].IsDown ? FootballBodies.DownRadius : ps[j].BodyRadius);
+                    if (d < minD - 0.05f) Flag("!! OVERLAP after the contact pass", ps[i].name + " / " + ps[j].name + " " + d.ToString("0.00") + " m (min " + minD.ToString("0.00") + ") at " + t.ToString("0.0") + " s");
                 }
                 // The ball vs its holder.
                 var ball = v.ball;
