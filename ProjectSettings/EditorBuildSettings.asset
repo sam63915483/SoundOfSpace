@@ -5,10 +5,10 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/MainMenu.unity
     guid: 35b52c74c3cb93948854f785c3e69dd7
-  - enabled: 1
+  - enabled: 0
     path: Assets/1.6.7.7.7.unity
     guid: 3251a5cbe93507a408f4a8e8097259d6
   - enabled: 0
@@ -86,10 +86,13 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D25_CandleSea.unity
     guid: 550f7f1a3ed8eec4ebc655d9effc31ad
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/MenuOrbit.unity
     guid: fe30e6739dbc1394c96ba2e4baefb8d5
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Tutorial.unity
     guid: 8bd840f977a9af245baee96e12694aa4
+  - enabled: 1
+    path: Assets/4 - Scenes/Proto_Football.unity
+    guid: 62de964b48cacd344b21ce4a108889b3
   m_configObjects: {}
