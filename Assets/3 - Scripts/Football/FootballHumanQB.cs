@@ -27,6 +27,8 @@ public class FootballHumanQB : MonoBehaviour
     public float minThrow = 6f, maxThrow = 48f;      // metres, at 0 and full charge
     public float fieldMoveScale = 0.8f;              // the astronaut's stride on the field (walk 8 / run 14 would make him uncatchable)
     public float knockdownSeconds = 1.6f;
+    [Tooltip("Where the ball sits in the hands, in camera space (right, up, forward).")]
+    public Vector3 handOffset = new Vector3(0.16f, -0.26f, 0.55f);
 
     public bool Active { get; private set; }
     /// Hotbar: the ball is an item while you hold it.
@@ -41,7 +43,6 @@ public class FootballHumanQB : MonoBehaviour
     FootballMatch _match;
     Transform _fieldRoot;
     PlayerController _player;
-    PlayerPickup _pickup;
     Transform _hold;
     FootballPlayer _slot;
     HumanQBBrain _brain;
@@ -58,8 +59,19 @@ public class FootballHumanQB : MonoBehaviour
         if (_match == null) { enabled = false; return; }
         _fieldRoot = transform.parent != null ? transform.parent : transform;
         _player = FindObjectOfType<PlayerController>();
-        _pickup = _player != null ? _player.GetComponentInChildren<PlayerPickup>(true) : null;
-        _hold = _pickup != null ? _pickup.holdPosition : null;
+        // The hands: an anchor under the camera's view frame (the pistol's
+        // trick — PlayerPickup.holdPosition is a scene-authored point and in the
+        // proto scene it sits 2 m under the turf, so the snap flew into the ground).
+        if (_player != null)
+        {
+            Transform eye = _player.Camera != null ? CameraTransformFX.ViewFrameOf(_player.Camera.transform) : null;
+            if (eye == null) eye = _player.Camera != null ? _player.Camera.transform : _player.transform;
+            var hg = new GameObject("FootballHold");
+            hg.transform.SetParent(eye, false);
+            hg.transform.localPosition = handOffset;
+            hg.transform.localRotation = Quaternion.identity;
+            _hold = hg.transform;
+        }
         _brain = new HumanQBBrain(this);
         if (hotbarIcon == null) hotbarIcon = BuildIcon();
         BuildButton();

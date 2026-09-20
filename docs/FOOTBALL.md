@@ -271,6 +271,58 @@ hands, not the man, when beaten) · a play sheet per team with tendencies the
 other side can read · celebrations with two men (chest bump) · a real
 run-cycle with hip sway and foot planting · crowd noise keyed to the card.
 
+## Phase 2 (2026-09-19, late) — you play QB
+
+**How to play it:** a red button stands on the home sideline near the player
+spawn (field `(-30.2, 0, 0)`). Look at the dome, press **F**. You are now the
+blue team's (Twin Terrors) QB; their alien QB walks to the bench and vanishes,
+and comes back for kickoffs, punts and defence. Press F again to sub out.
+
+On each blue scrimmage play: the huddle breaks, the aliens line up, and a green
+translucent cylinder marks the QB spot. Walk into it — it disappears, the line
+sets, and about a second later the centre snaps the ball to your hands. The ball
+lands in the hotbar (auto-equipped) and sits in front of the camera. Then:
+
+- **Hold LMB** up to 2 s to charge a throw (6 m at a tap → 48 m at full). The
+  arc and a landing ring are drawn on the field; the target is straight ahead
+  of the camera at that distance. **Release** to throw — the ball goes to the
+  receiver nearest the landing spot (the normal catch / contest / drop rules
+  apply, so a throw into a crowd is a throw into a crowd).
+- **Or run.** Cross the line of scrimmage with the ball and it is tucked; the
+  defence tackles you the same way it tackles an alien. Getting tackled or
+  sacked plants you for 1.6 s and ends the play; the ball is set at your feet
+  for the centre. Your stride is scaled to 0.8 so you can be caught.
+
+**How it is wired (nothing new in the sim):** `FootballHumanQB` (made by
+`FootballMatch.Boot`, play mode only) owns the button, cylinder, aim visuals,
+hotbar entry and input. `FootballMatch.PrepareScrimmage` hands the away QB slot
+`HumanQBBrain` (`KeepsControlWhenCarrying`) and `PlayInstance.SetHuman`. The
+slot is an ordinary `FootballPlayer` flagged `humanDriven`: its position,
+facing and hand point are copied from the real player every step
+(`SyncHuman`), it never integrates movement itself, and `BallHoldPoint()`
+returns the player's hand point. The snap flies to that point and the catch
+test is the same `TouchDistance` with a generous 1.6 m slack. Throws come out
+through the normal `DoAction(Throw)` path (no wind-up for the human), so
+receivers, DBs and the replay see a regular pass. The hotbar item is a
+registry row (`Hotbar.ItemId.Football`) with a code-drawn icon.
+
+**Traps hit while building it:**
+- `PlayerPickup.holdPosition` in `Proto_Football.unity` is a scene-authored
+  point 2 m *under* the turf and 3 m to the side. The first snap flew into the
+  ground and the centre "scooped it up" every play. Hands are now a
+  `FootballHold` anchor hung under the camera's view frame
+  (`CameraTransformFX.ViewFrameOf`, the pistol's trick) — `handOffset` on the
+  component moves the ball in the hands.
+- A test driver that sets `transform.position` on the player does nothing (the
+  controller re-applies the rigidbody). Teleport with `rb.position` +
+  `Physics.SyncTransforms()` like `TutorialDirector` does.
+- Nothing waits on a timer for you: the play sits at `Setup` until you reach
+  the cylinder. Walking away from the cylinder is how you stall the game.
+
+**Not yet verified by a human hand:** the throw charge / arc feel, the hotbar
+icon, the ball's position in the hands, the knockdown, receivers catching your
+throws. All of it needs Sam's playtest.
+
 ## Numbers from the last headless soak (pass 2) (3 games, seeds 1000–1002)
 
 21–14, 28–0, 14–7 · 53–61 plays/game · 45–55% completions · 6–9 yds/play ·
@@ -308,6 +360,6 @@ probe that a new symbol resolves.
   the overhead labels are team-coloured.
 - No punting, no field goals, no safeties, no penalties, no stiff-arm.
 - No crowd, no sound, no sideline, no camera work.
-- Phase 2 (the player at QB) is designed in: a brain with
-  `KeepsControlWhenCarrying` in `qbBrainOverride[team]`; `PlayInstance` doesn't
-  care who is driving the QB slot. The snap catch keeps whatever brain the QB has.
+- Phase 2 (the player at QB) is BUILT — see the Phase 2 section. Open: no
+  audible / play choice for the human, no run-blocking read, the CPU defence
+  does not know a human is slower to release.

@@ -578,9 +578,13 @@ public class FootballMatch : MonoBehaviour
         int diff = _possession.score - Other(_possession).score;
         bool late = _quarter >= 4 && _clock < 180f;
         var mood = late && diff < 0 ? FootballPlay.Mood.Desperate : late && diff > 0 ? FootballPlay.Mood.KillClock : FootballPlay.Mood.Normal;
-        if (play == null) play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall, mood);
-        _lastCall = play;
         bool human = humanQb != null && humanQb.Active && _possession == away;
+        if (play == null) play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall, mood);
+        // The player at QB gets pass calls only: the trick plays (sweep, screen,
+        // flea flicker, designed runs) hand the ball off by brain, and he has no brain.
+        for (int i = 0; human && play.kind != FootballPlay.Kind.Pass && play.kind != FootballPlay.Kind.Rollout && i < 12; i++)
+            play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall, mood);
+        _lastCall = play;
         var brain = human ? humanQb.Brain : qbBrainOverride[_possession.index];
         if (human) humanQb.Brain.Reset();
         _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _losZ, play, brain, _rng, _toGo);
