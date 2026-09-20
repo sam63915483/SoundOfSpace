@@ -84,7 +84,10 @@ public class FootballBroadcast : MonoBehaviour
         public Vector3 ballPos; public Quaternion ballRot; public bool ballHeld;
         public FootballPlayer.PoseFrame[] poses;
         public Vector3 focus, second; public bool hasSecond; public float fov;   // the camera's intent, replayed as recorded
+        public int humanIndex; public Vector3 humanPos; public Quaternion humanRot; public Quaternion[] humanBones;   // the real player's body (Phase 2), -1 = none
     }
+    Transform _humanBody; Transform[] _humanBones;          // the live astronaut body and its skeleton
+    Transform _humanGhost; Transform[] _humanGhostBones;    // its replay double
 
     class Ghost { public Transform root, body; public FootballAlienRig rig; }
 
@@ -494,6 +497,19 @@ public class FootballBroadcast : MonoBehaviour
         if (_frames.Count >= MaxFrames) return;
         var f = new Frame { t = t, ballPos = v.ball.pos, ballRot = v.ball.transform.localRotation, ballHeld = holder != null, poses = new FootballPlayer.PoseFrame[v.players.Count] };
         for (int i = 0; i < v.players.Count; i++) f.poses[i] = v.players[i].CapturePose();
+        f.humanIndex = -1;
+        if (play.HumanDriven && _match.humanQb != null)
+        {
+            if (_humanBody == null) { _humanBody = _match.humanQb.BodyRoot; _humanBones = _humanBody != null ? _humanBody.GetComponentsInChildren<Transform>(true) : null; }
+            if (_humanBones != null)
+            {
+                for (int i = 0; i < v.players.Count; i++) if (v.players[i] == play.humanSlot) f.humanIndex = i;
+                f.humanPos = _fieldRoot.InverseTransformPoint(_humanBody.position);
+                f.humanRot = Quaternion.Inverse(_fieldRoot.rotation) * _humanBody.rotation;
+                f.humanBones = new Quaternion[_humanBones.Length];
+                for (int i = 0; i < _humanBones.Length; i++) f.humanBones[i] = _humanBones[i].localRotation;
+            }
+        }
         Intent(play, out f.focus, out f.second, out f.hasSecond, out f.fov);
         _frames.Add(f);
     }
@@ -662,7 +678,24 @@ public class FootballBroadcast : MonoBehaviour
             pf.bodyLocalPos = Vector3.Lerp(pa.bodyLocalPos, pb.bodyLocalPos, k);
             pf.bodyLocalRot = Quaternion.Slerp(pa.bodyLocalRot, pb.bodyLocalRot, k);
             var gh = _ghosts[g];
-            FootballPlayer.ApplyPose(gh.root, gh.body, gh.rig, _fieldRoot, pf);
+            bool human = a.humanIndex == g && a.humanBones != null;
+            if (gh.root.gameObject.activeSelf == human) gh.root.gameObject.SetActive(!human);      // the astronaut stands in for his slot
+            if (!human) FootballPlayer.ApplyPose(gh.root, gh.body, gh.rig, _fieldRoot, pf);
+        }
+        // The real player's double: his body, bone for bone, as recorded.
+        bool showHuman = a.humanIndex >= 0 && a.humanBones != null;
+        if (showHuman && _humanGhost == null) BuildHumanGhost();
+        if (_humanGhost != null)
+        {
+            if (_humanGhost.gameObject.activeSelf != showHuman) _humanGhost.gameObject.SetActive(showHuman);
+            if (showHuman)
+            {
+                bool bb = b.humanBones != null && b.humanBones.Length == a.humanBones.Length;
+                _humanGhost.localPosition = bb ? Vector3.Lerp(a.humanPos, b.humanPos, k) : a.humanPos;
+                _humanGhost.localRotation = bb ? Quaternion.Slerp(a.humanRot, b.humanRot, k) : a.humanRot;
+                int n = Mathf.Min(_humanGhostBones.Length, a.humanBones.Length);
+                for (int j = 1; j < n; j++) _humanGhostBones[j].localRotation = bb ? Quaternion.Slerp(a.humanBones[j], b.humanBones[j], k) : a.humanBones[j];
+            }
         }
         if (_ghostBall != null)
         {
@@ -688,9 +721,31 @@ public class FootballBroadcast : MonoBehaviour
     /// Test key: cut the replay now (the huddle it was holding breaks).
     public void SkipReplay() { if (_replaying) EndReplay(); }
 
+    /// A copy of the astronaut body under the field root: no scripts, no
+    /// colliders, renderers toggled like the other ghosts (shadows on — the live
+    /// body may be shadows-only in first person).
+    void BuildHumanGhost()
+    {
+        if (_humanBody == null) return;
+        var go = Instantiate(_humanBody.gameObject, _fieldRoot);
+        go.name = "Ghost Astronaut";
+        foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
+        foreach (var mb in go.GetComponentsInChildren<MonoBehaviour>(true)) Destroy(mb);
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+        {
+            r.enabled = false; r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            _ghostRenderers.Add(r);
+        }
+        _humanGhost = go.transform;
+        _humanGhostBones = go.GetComponentsInChildren<Transform>(true);
+        go.SetActive(false);
+    }
+
     void EndReplay()
     {
         _replaying = false;
+        if (_humanGhost != null) _humanGhost.gameObject.SetActive(false);
+        foreach (var g in _ghosts) if (!g.root.gameObject.activeSelf) g.root.gameObject.SetActive(true);
         if (_heldPlay != null) { _heldPlay.holdBreak = false; _heldPlay = null; }
         SetReplayLook(false);
         foreach (var g in _ghosts) g.root.gameObject.SetActive(false);

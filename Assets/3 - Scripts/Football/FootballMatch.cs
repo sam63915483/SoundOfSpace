@@ -528,10 +528,28 @@ public class FootballMatch : MonoBehaviour
         if (_broadcast == null) _broadcast = FindObjectOfType<FootballBroadcast>();
         if (_broadcast != null && _broadcast.Replaying) { _broadcast.SkipReplay(); return; }
         if (_play == null || _play.phase == PlayInstance.Phase.Ended) return;
+        // The player is waiting to play QB and this isn't his team's ball: hand it to them.
+        if (humanQb != null && humanQb.Active)
+        {
+            var willHave = _play.view.isKickoff ? _play.view.defense : _play.view.offense;
+            if (willHave != away) { SkipToHuman(); return; }
+        }
         if (_play.view.isKickoff) _play.SkipKickoff();
         else if (_play.phase == PlayInstance.Phase.Setup) _play.skipHuddle = true;
     }
     FootballBroadcast _broadcast;
+
+    /// Test key: throw the current play away and give the human's team a 1st & 10 at their 25.
+    void SkipToHuman()
+    {
+        _play.Ended -= OnPlayEnded; _play.Ended -= OnKickoffEnded;
+        _play.Abort();
+        _possession = away; _puntNext = false; _pendingKickoff = false;
+        _losZ = away.attackDir * (25f * FootballField.MetresPerYard - FootballField.GoalLineZ);
+        FirstDown();
+        Say("Skipped — " + away.shortName + " ball at the 25");
+        Enter(State.DeadBall);
+    }
 
     void PrepareKickoff()
     {

@@ -217,6 +217,10 @@ public class PlayInstance
     public bool hurryUp;
     /// Test key: break the huddle the moment it is set (or now, if it is still gathering).
     public bool skipHuddle;
+    /// Human QB: the huddle holds until he has walked in and picked a play.
+    public bool humanPlayChosen;
+    public bool Broke => _broke;
+    public Vector3 HumanHuddleSpot => humanSlot != null && _huddle.TryGetValue(humanSlot, out var hs) ? hs : Vector3.zero;
     /// True while both sides are in their huddles (the replay window).
     public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
     /// Seconds until the huddle breaks (an upper bound while men are still
@@ -481,7 +485,8 @@ public class PlayInstance
                 {
                     if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
                     bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= (hurryUp ? 2f : HuddleHold) && (!holdBreak || hurryUp);
-                    if (held || _phaseTime > HuddleTimeout || skipHuddle)
+                    bool humanOk = !HumanDriven || humanPlayChosen;          // his huddle waits for his call
+                    if (humanOk && (held || _phaseTime > HuddleTimeout || skipHuddle))
                     {
                         _broke = true; all = false; _phaseTime = 0f;
                         foreach (var kv in _formation)
@@ -1435,6 +1440,56 @@ public class PlayInstance
         if (phase != Phase.Ended) return;
         for (int i = 0; i < _players.Count; i++) _players[i].Tick(view, dt);
         _ball.Tick(dt);
+    }
+
+    /// Human QB: the play he picked in the huddle. Receivers, their routes and
+    /// the men covering them are laid out again for it; the huddle then breaks.
+    public void ChoosePlay(FootballPlay play, FootballFormation form)
+    {
+        if (view.isKickoff || _broke) return;
+        view.play = play; formation = form ?? FootballFormation.Pick(play, _rng);
+        view.readDelay = 0.4f;
+        var off = view.offense; var def = view.defense;
+        var wr = new[] { Find(off, FootballRole.WR, 0), Find(off, FootballRole.WR, 1), Find(off, FootballRole.WR, 2) };
+        var db = new[] { Find(def, FootballRole.DB, 0), Find(def, FootballRole.DB, 1), Find(def, FootballRole.DB, 2) };
+        var s = Find(def, FootballRole.S);
+        float[] wrX = formation.wrX;
+        float dbDepth = defCall == DefCall.Press || defCall == DefCall.Blitz ? 1.3f : defCall == DefCall.Off ? 7f : 3.5f;
+        float sDepth = defCall == DefCall.Off ? 15f : defCall == DefCall.Normal ? 12f : 10f;
+        float shade = 0f;
+        for (int i = 0; i < 3; i++)
+        {
+            if (wr[i] != null) _formation[wr[i]] = F(wrX[i], i == 2 ? -1.2f : -0.8f);
+            float x = Mathf.Clamp(wrX[i], -(FootballField.HalfWidth - 1.5f), FootballField.HalfWidth - 1.5f);
+            if (db[i] != null) _formation[db[i]] = F(x, dbDepth + (i == 2 ? 1.2f : 0f));
+            shade += wrX[i];
+            var route = new List<Vector3>();
+            float sideward = Mathf.Sign(wrX[i]);
+            foreach (var wp in play.routes[i].points) route.Add(OnField(F(wrX[i] + wp.x * sideward, wp.y)));
+            if (wr[i] != null) _live[wr[i]] = new WRBrain(route, play.routes[i].settle);
+            if (db[i] != null) _live[db[i]] = new DBBrain(wr[i], def, _rng);
+        }
+        if (s != null) _formation[s] = F(shade / 3f * 0.3f, sDepth);
+        humanPlayChosen = true;
+        log?.Invoke(off.shortName + " call " + play.name + " (" + formation.name + ")");
+    }
+
+    /// Test key: throw the play away with no result (the match re-spots the ball).
+    public void Abort()
+    {
+        if (phase == Phase.Ended) return;
+        phase = Phase.Ended;
+        view.snapped = false; view.qbExtending = false;
+        _throwPending = false; _kickPending = false;
+        foreach (var p in _players)
+        {
+            p.SetHighlight(false); p.speedScale = 1f; p.brain = null; p.settled = false; p.SetStance(Stance.None); p.wrapping = null;
+            if (p.IsThrowing) p.CancelThrow();
+            if (p != _ball.holder) p.SetHold(HoldStyle.None);
+        }
+        if (_ball.holder != null) _ball.holder.SetHold(HoldStyle.Tucked);
+        if (_ball.state == FootballBall.State.Airborne) _ball.Place(new Vector3(_ball.pos.x, 0f, _ball.pos.z));
+        log?.Invoke("Play skipped");
     }
 
     /// Test key: a kickoff or punt ends now as a touchback (25 / 20).

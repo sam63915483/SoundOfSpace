@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// Phase 2 (Sam, 2026-09-19): the player plays quarterback for the blue team.
@@ -23,7 +26,7 @@ using UnityEngine;
 public class FootballHumanQB : MonoBehaviour
 {
     public Sprite hotbarIcon;
-    public float chargeSeconds = 2f;
+    public float chargeSeconds = 4f;                 // Sam: 2 s charged too fast
     public float minThrow = 6f, maxThrow = 48f;      // metres, at 0 and full charge
     public float fieldMoveScale = 0.8f;              // the astronaut's stride on the field (walk 8 / run 14 would make him uncatchable)
     public float knockdownSeconds = 1.6f;
@@ -39,6 +42,23 @@ public class FootballHumanQB : MonoBehaviour
     public HumanQBBrain Brain => _brain;
     /// Beside the button, off the home sideline: where the alien QB waits.
     public Vector3 BenchSpot => new Vector3(-(FootballField.HalfWidth + 3.5f), 0f, 4f);
+    /// The astronaut body under the player (the "Mesh" child), for the replay double.
+    public Transform BodyRoot
+    {
+        get
+        {
+            if (_body != null || _player == null) return _body;
+            _body = _player.transform.Find("Mesh");
+            if (_body == null) { var smr = _player.GetComponentInChildren<SkinnedMeshRenderer>(true); if (smr != null) _body = smr.transform.parent != null ? smr.transform.parent : smr.transform; }
+            return _body;
+        }
+    }
+    Transform _body;
+    FootballBroadcast _broadcast;
+    // The huddle: three cards, pick one.
+    Canvas _menuCanvas; readonly RawImage[] _cards = new RawImage[3]; readonly Image[] _cardFrames = new Image[3]; readonly TextMeshProUGUI[] _cardTitles = new TextMeshProUGUI[3];
+    readonly FootballPlay[] _offer = new FootballPlay[3]; readonly FootballFormation[] _offerForm = new FootballFormation[3];
+    int _menuSel; bool _menuOpen; PlayInstance _menuPlay; System.Random _menuRng = new System.Random();
 
     FootballMatch _match;
     Transform _fieldRoot;
@@ -140,8 +160,21 @@ public class FootballHumanQB : MonoBehaviour
         _holding = driving && ball != null && ball.state == FootballBall.State.Held && ball.holder == _slot;
 
         // The snap spot.
+        // The huddle: the cylinder marks your place in it; walk in and the play
+        // cards come up. Nothing moves on until you have called one.
+        bool huddling = driving && play.phase == PlayInstance.Phase.Setup && !play.Broke && !play.humanPlayChosen;
+        if (_menuOpen && (!huddling || play != _menuPlay)) CloseMenu();
+        if (huddling && !_menuOpen)
+        {
+            Vector3 hs = play.HumanHuddleSpot;
+            _cylinder.transform.localPosition = hs + Vector3.up * 1.25f;
+            Vector3 me = _fieldRoot.InverseTransformPoint(_player.transform.position);
+            if (Vector3.Distance(new Vector3(me.x, 0f, me.z), hs) < 1.3f) OpenMenu(play);
+        }
+        if (_menuOpen) TickMenu(play);
+
         bool showSpot = driving && play.phase == PlayInstance.Phase.Setup && play.LinedUp && !play.humanAtSpot;
-        if (_cylinder != null) _cylinder.SetActive(showSpot);
+        if (_cylinder != null) _cylinder.SetActive(showSpot || (huddling && !_menuOpen));
         if (showSpot)
         {
             Vector3 spot = play.HumanSnapSpot;
@@ -189,10 +222,10 @@ public class FootballHumanQB : MonoBehaviour
             }
         }
 
-        // Stride: a football stride on the field; planted after a tackle.
+        // Stride: a football stride on the field; planted after a tackle, still while calling the play.
         if (driving)
         {
-            float scale = Time.time < _downUntil ? 0f : fieldMoveScale;
+            float scale = Time.time < _downUntil || _menuOpen ? 0f : fieldMoveScale;
             _player.introMoveScale = scale; _scaled = true;
         }
         else RestoreMoveScale();
@@ -286,6 +319,152 @@ public class FootballHumanQB : MonoBehaviour
     }
 
     // ── visuals: the snap spot, the aim arc ────────────────────────────────
+
+    // ── the huddle play cards ─────────────────────────────────────────────
+
+    void OpenMenu(PlayInstance play)
+    {
+        if (_menuCanvas == null) BuildMenu();
+        _menuPlay = play; _menuOpen = true; _menuSel = 0;
+        // Three different pass calls (the trick plays hand off by brain; you have none).
+        var pool = new List<FootballPlay>();
+        foreach (var p in FootballPlay.All) if (p.kind == FootballPlay.Kind.Pass || p.kind == FootballPlay.Kind.Rollout) pool.Add(p);
+        for (int i = 0; i < 3; i++)
+        {
+            FootballPlay pick = pool.Count > 0 ? pool[_menuRng.Next(pool.Count)] : null;
+            if (pick != null) pool.Remove(pick);
+            _offer[i] = pick; _offerForm[i] = pick != null ? FootballFormation.Pick(pick, _menuRng) : null;
+            if (pick == null) continue;
+            var old = _cards[i].texture as Texture2D; if (old != null) Destroy(old);
+            _cards[i].texture = DrawPlayArt(pick, _offerForm[i]);
+            _cardTitles[i].text = pick.name.ToUpperInvariant() + "\n<size=60%>" + _offerForm[i].name + " · " + (pick.kind == FootballPlay.Kind.Rollout ? "rollout" : "pass") + "</size>";
+        }
+        _menuCanvas.gameObject.SetActive(true);
+        Highlight();
+        InteractPromptUI.ShowOneShot("Call it: 1 / 2 / 3, or arrows + Enter", 3f);
+    }
+
+    void CloseMenu()
+    {
+        _menuOpen = false; _menuPlay = null;
+        if (_menuCanvas != null) _menuCanvas.gameObject.SetActive(false);
+    }
+
+    void TickMenu(PlayInstance play)
+    {
+        int pick = -1;
+        if (Input.GetKeyDown(KeyCode.Alpha1)) pick = 0;
+        if (Input.GetKeyDown(KeyCode.Alpha2)) pick = 1;
+        if (Input.GetKeyDown(KeyCode.Alpha3)) pick = 2;
+        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A)) { _menuSel = (_menuSel + 2) % 3; Highlight(); }
+        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D)) { _menuSel = (_menuSel + 1) % 3; Highlight(); }
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetMouseButtonDown(0)) pick = _menuSel;
+        if (pick < 0 || _offer[pick] == null) return;
+        play.ChoosePlay(_offer[pick], _offerForm[pick]);
+        // Called it fast? The screens go back to live so the snap is not missed.
+        if (_broadcast == null) _broadcast = FindObjectOfType<FootballBroadcast>();
+        if (_broadcast != null) _broadcast.SkipReplay();
+        CloseMenu();
+    }
+
+    void Highlight()
+    {
+        for (int i = 0; i < 3; i++) if (_cardFrames[i] != null) _cardFrames[i].color = i == _menuSel ? new Color(1f, 0.82f, 0.25f, 1f) : new Color(0.12f, 0.12f, 0.14f, 0.85f);
+    }
+
+    void BuildMenu()
+    {
+        var go = new GameObject("FootballPlayMenu", typeof(RectTransform));
+        go.transform.SetParent(transform, false);
+        _menuCanvas = go.AddComponent<Canvas>();
+        _menuCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _menuCanvas.sortingOrder = 300;
+        var scaler = go.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = 1f;
+        var title = NewText(go.transform, "Title", "CALL THE PLAY", 34f, FontStyles.Bold);
+        title.rectTransform.anchorMin = title.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        title.rectTransform.anchoredPosition = new Vector2(0f, 250f); title.rectTransform.sizeDelta = new Vector2(800f, 50f);
+        for (int i = 0; i < 3; i++)
+        {
+            var frame = new GameObject("Card" + (i + 1), typeof(RectTransform)).GetComponent<RectTransform>();
+            frame.SetParent(go.transform, false);
+            frame.anchorMin = frame.anchorMax = new Vector2(0.5f, 0.5f);
+            frame.sizeDelta = new Vector2(400f, 380f); frame.anchoredPosition = new Vector2((i - 1) * 440f, 0f);
+            _cardFrames[i] = frame.gameObject.AddComponent<Image>();
+            var art = new GameObject("Art", typeof(RectTransform)).GetComponent<RectTransform>();
+            art.SetParent(frame, false); art.anchorMin = new Vector2(0.5f, 1f); art.anchorMax = new Vector2(0.5f, 1f); art.pivot = new Vector2(0.5f, 1f);
+            art.anchoredPosition = new Vector2(0f, -10f); art.sizeDelta = new Vector2(380f, 285f);
+            _cards[i] = art.gameObject.AddComponent<RawImage>();
+            var t = NewText(frame, "Name", "", 26f, FontStyles.Bold);
+            t.rectTransform.anchorMin = new Vector2(0f, 0f); t.rectTransform.anchorMax = new Vector2(1f, 0f); t.rectTransform.pivot = new Vector2(0.5f, 0f);
+            t.rectTransform.anchoredPosition = new Vector2(0f, 8f); t.rectTransform.sizeDelta = new Vector2(0f, 74f);
+            t.alignment = TextAlignmentOptions.Center;
+            _cardTitles[i] = t;
+            var num = NewText(frame, "Num", (i + 1).ToString(), 22f, FontStyles.Bold);
+            num.rectTransform.anchorMin = num.rectTransform.anchorMax = new Vector2(0f, 1f); num.rectTransform.pivot = new Vector2(0f, 1f);
+            num.rectTransform.anchoredPosition = new Vector2(14f, -14f); num.rectTransform.sizeDelta = new Vector2(40f, 30f);
+            num.color = new Color(1f, 0.82f, 0.25f, 1f);
+        }
+        go.SetActive(false);
+    }
+
+    static TextMeshProUGUI NewText(Transform parent, string name, string text, float size, FontStyles style)
+    {
+        var rt = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
+        rt.SetParent(parent, false);
+        var t = rt.gameObject.AddComponent<TextMeshProUGUI>();
+        HudFontResolver.Apply(t);
+        t.text = text; t.fontSize = size; t.fontStyle = style; t.color = Color.white; t.alignment = TextAlignmentOptions.Center;
+        return t;
+    }
+
+    /// Madden-style play art: the line, the QB, the three receivers and their
+    /// routes (the first read in gold), the defence's shells faint.
+    static Texture2D DrawPlayArt(FootballPlay play, FootballFormation form)
+    {
+        const int W = 256, Hh = 192; const float px = 4.2f;           // pixels per yard
+        var tex = new Texture2D(W, Hh, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var c = new Color32[W * Hh];
+        var grass = new Color32(28, 78, 36, 255); var line = new Color32(70, 120, 78, 255);
+        for (int i = 0; i < c.Length; i++) c[i] = grass;
+        float losY = 40f;
+        for (int yd = -10; yd <= 40; yd += 5) { int y = Mathf.RoundToInt(losY + yd * px); if (y >= 0 && y < Hh) for (int x = 0; x < W; x++) c[y * W + x] = line; }
+        int ly = Mathf.RoundToInt(losY); for (int x = 0; x < W; x++) { c[ly * W + x] = new Color32(235, 235, 235, 255); if (ly + 1 < Hh) c[(ly + 1) * W + x] = new Color32(235, 235, 235, 255); }
+        System.Func<float, float, Vector2Int> P = (xYd, dYd) => new Vector2Int(Mathf.RoundToInt(W * 0.5f + xYd * px), Mathf.RoundToInt(losY + dYd * px));
+        var white = new Color32(240, 240, 240, 255); var gold = new Color32(255, 205, 70, 255); var blue = new Color32(110, 170, 255, 255); var red = new Color32(230, 90, 80, 255);
+        // Line, QB, defence shells.
+        Dot(c, W, Hh, P(0f, -0.5f), 4, white); Dot(c, W, Hh, P(-1.6f, -0.5f), 4, white); Dot(c, W, Hh, P(1.6f, -0.5f), 4, white);
+        Dot(c, W, Hh, P(0f, -4.5f), 5, blue);
+        Dot(c, W, Hh, P(-1.6f, 1.0f), 3, red); Dot(c, W, Hh, P(1.6f, 1.0f), 3, red); Dot(c, W, Hh, P(0f, 4.5f), 3, red); Dot(c, W, Hh, P(0f, 12f), 3, red);
+        int first = play.priority != null && play.priority.Length > 0 ? play.priority[0] : -1;
+        for (int i = 0; i < 3; i++)
+        {
+            float wx = form.wrX[i]; float side = Mathf.Sign(wx);
+            var start = P(wx, i == 2 ? -1.2f : -0.8f);
+            Dot(c, W, Hh, P(wx, 3.5f + (i == 2 ? 1.2f : 0f)), 3, red);
+            var col = i == first ? gold : white;
+            var prev = start;
+            foreach (var wp in play.routes[i].points) { var nxt = P(wx + wp.x * side, wp.y); Line(c, W, Hh, prev, nxt, col); prev = nxt; }
+            Dot(c, W, Hh, prev, 3, col);
+            Dot(c, W, Hh, start, 5, blue);
+        }
+        tex.SetPixels32(c); tex.Apply(false, false);
+        return tex;
+    }
+    static void Dot(Color32[] c, int W, int H, Vector2Int p, int r, Color32 col)
+    {
+        for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++)
+        { if (x * x + y * y > r * r) continue; int px = p.x + x, py = p.y + y; if (px >= 0 && px < W && py >= 0 && py < H) c[py * W + px] = col; }
+    }
+    static void Line(Color32[] c, int W, int H, Vector2Int a, Vector2Int b, Color32 col)
+    {
+        int steps = Mathf.Max(Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y), 1);
+        for (int s = 0; s <= steps; s++)
+        {
+            float t = s / (float)steps; int x = Mathf.RoundToInt(Mathf.Lerp(a.x, b.x, t)), y = Mathf.RoundToInt(Mathf.Lerp(a.y, b.y, t));
+            for (int dy = 0; dy <= 1; dy++) for (int dx = 0; dx <= 1; dx++) { int px = x + dx, py = y + dy; if (px >= 0 && px < W && py >= 0 && py < H) c[py * W + px] = col; }
+        }
+    }
 
     void BuildAimVisuals()
     {

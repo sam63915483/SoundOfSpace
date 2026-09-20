@@ -293,6 +293,18 @@ lands in the hotbar (auto-equipped) and sits in front of the camera. Then:
   sacked plants you for 1.6 s and ends the play; the ball is set at your feet
   for the centre. Your stride is scaled to 0.8 so you can be caught.
 
+**The huddle (round 3):** when your team gathers, the green cylinder marks your
+place in the huddle and everyone waits for you. Walk in and three play cards
+come up (route art, first read in gold): **1 / 2 / 3**, or arrows + Enter, or
+click. The huddle breaks on your call with that play's formation and routes
+(`PlayInstance.ChoosePlay` re-lays the receivers and the men covering them);
+calling it fast cuts the replay on the screens. Then the snap-spot cylinder.
+Backspace with the other team on the ball throws the play away and gives your
+team a 1st & 10 at the 25 (`FootballMatch.SkipToHuman`). The charge is 4 s now.
+In replays your slot is an astronaut, not an alien: the recorder stores every
+bone rotation of the real body (`Player/Mesh`) per frame and a stripped clone
+under the field root re-enacts it.
+
 **Controls while you are QB:** move and sprint as normal (Shift), scaled to
 0.8 so the aliens can catch you. F is only the sideline button. LMB = charge /
 throw. **Backspace** skips whatever is making you wait: a replay is cut, a
