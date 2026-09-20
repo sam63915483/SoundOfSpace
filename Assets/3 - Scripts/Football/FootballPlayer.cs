@@ -63,6 +63,24 @@ public class FootballPlayer : MonoBehaviour
     [System.NonSerialized] public bool humanDriven;
     Vector3 _humanHands;
 
+    // ── the solid body (FootballBodies) ────────────────────────────────────
+    /// Disc radius / mass for the contact pass; set from the role in Init.
+    [System.NonSerialized] public float BodyRadius = 0.42f, BodyMass = 1f;
+    /// Rolled per snap by PlayInstance (0.8–1.2): how strong he is today.
+    [System.NonSerialized] public float contactSwing = 1f;
+    /// Field-space lean from a shove (the rig tips the spine into it). Reset every tick by the engagement pass.
+    [System.NonSerialized] public Vector3 leanField;
+    /// Touched somebody this tick (for the debug ring). Reset by the contact pass's caller.
+    [System.NonSerialized] public bool inContact;
+    /// While engaged in a swim, his wanted move is projected onto the tangent of this blocker (null = free).
+    [System.NonSerialized] public FootballPlayer wantTangentOf;
+    /// Setup sidesteps this play (MoveToBrain), summed into the play's stats.
+    [System.NonSerialized] public int sidesteps;
+    /// A human slot: displacement the contact pass asked for this step, for FootballHumanQB to apply to the real body.
+    Vector3 _pendingShove;
+    /// A hurdling carrier's disc is lifted through the middle of the leap so a diver passes under it.
+    public bool BodyLifted => IsHurdling && HurdlePhase > 0.2f && HurdlePhase < 0.8f;
+
     Vector3 _pos, _vel, _facing = Vector3.forward, _facingTarget = Vector3.forward;
     Stance _stance = Stance.None;
     float _idleTime;
@@ -167,6 +185,8 @@ public class FootballPlayer : MonoBehaviour
         // able to run down a receiver from the deep middle.
         float roleMul = off == FootballRole.OL ? 0.85f : off == FootballRole.C ? 0.95f : off == FootballRole.WR ? 1.02f : 1f;   // a mobile QB, receivers with a step on the corners
         _baseMaxSpeed = _maxSpeed = BaseSpeed * (0.9f + 0.2f * team.speed) * roleMul;
+        BodyRadius = FootballBodies.RadiusFor(off);
+        BodyMass = FootballBodies.MassFor(off);
 
         _modelPrefab = modelPrefab;
         if (modelPrefab != null) BuildAlien(modelPrefab);
@@ -311,6 +331,8 @@ public class FootballPlayer : MonoBehaviour
         role = offense ? offRole : defRole;
         roleIndex = offense ? offIndex : defIndex;
         _maxSpeed = _baseMaxSpeed * (role == FootballRole.S ? 1.03f : 1f);
+        BodyRadius = FootballBodies.RadiusFor(role);
+        BodyMass = FootballBodies.MassFor(role);
         if (_labelText != null) _labelText.text = Label;
     }
 
@@ -330,6 +352,30 @@ public class FootballPlayer : MonoBehaviour
         _pos = fieldPos; _pos.y = 0f;
         transform.localPosition = _pos;
     }
+
+    /// The contact pass moves the disc: a few centimetres, never a teleport.
+    /// A human slot doesn't move here — the real body does (FootballHumanQB).
+    public void ShiftBody(Vector3 deltaField)
+    {
+        deltaField.y = 0f;
+        if (humanDriven) { _pendingShove += deltaField; return; }
+        _pos += deltaField;
+        transform.localPosition = _pos;
+    }
+
+    /// Replace the velocity component along `normal` (a momentum trade).
+    public void SetVelAlong(Vector3 normal, float value)
+    {
+        if (humanDriven) return;
+        float cur = Vector3.Dot(_vel, normal);
+        _vel += normal * (value - cur);
+    }
+
+    /// FootballHumanQB drains this every step and applies it to the player's rigidbody.
+    public Vector3 TakePendingShove() { var s = _pendingShove; _pendingShove = Vector3.zero; return s; }
+
+    /// Drill / probe only: set the velocity directly.
+    public void SetVelForDrill(Vector3 velField) { velField.y = 0f; _vel = velField; }
 
     /// Hand the slot to the real player (hide the alien, he vanished at the
     /// bench) or back to the CPU (he reappears where he vanished).
@@ -658,6 +704,12 @@ public class FootballPlayer : MonoBehaviour
         else if (IsHurdling) { want = _facing; moveScale = 0.95f; }
         else if (IsSpinning) { want = want.sqrMagnitude > 0.01f ? want : _facing; moveScale = 0.7f; }
         if (IsStumbling) moveScale *= 0.6f;
+        // Engaged in a swim: only the component along the blocker's tangent is his to make.
+        if (wantTangentOf != null)
+        {
+            Vector3 nrm = wantTangentOf.Pos - _pos; nrm.y = 0f;
+            if (nrm.sqrMagnitude > 1e-4f) { nrm.Normalize(); want -= nrm * Mathf.Max(0f, Vector3.Dot(want, nrm)); }
+        }
         Vector3 targetVel = want * (_maxSpeed * speedScale * moveScale);
         // On the ground: skid to a stop.
         if (IsDown) targetVel = Vector3.zero;

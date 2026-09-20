@@ -1,0 +1,87 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// Contact drill (2026-09-20): no play mode, no whole game. (A) two discs
+// pushed into each other come out separated with a contact recorded and
+// momentum traded; (B) a table of BlockDrive across the stat range; (C) a
+// table of TackleHit across closing speed × angle against WrapThreshold.
+// Copy to the scratchpad, replace <scratchpad>/, run with execute_script.
+public static class ContactDrill
+{
+    const string Out = "<scratchpad>/drill.txt";
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__ContactDrill") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var home = new FootballTeam { name = "A", shortName = "A", attackDir = 1 };
+            var away = new FootballTeam { name = "B", shortName = "B", attackDir = -1 };
+            var mat = new Material(FootballShader.Standard);
+            FootballPlayer Make(FootballTeam t, FootballRole off, FootballRole def)
+            {
+                var go = new GameObject("p"); go.transform.SetParent(root.transform, false);
+                var p = go.AddComponent<FootballPlayer>();
+                p.Init(root.transform, t, off, 0, def, 0, mat);
+                return p;
+            }
+            // (A) an OL and a DL 0.6 m apart (radii 0.5 + 0.5 = 1.0 → 0.4 overlap), DL running at him.
+            var ol = Make(home, FootballRole.OL, FootballRole.DL);
+            var dl = Make(away, FootballRole.DL, FootballRole.OL);
+            ol.Teleport(new Vector3(0f, 0f, 0f), Vector3.forward);
+            dl.Teleport(new Vector3(0f, 0f, 0.6f), Vector3.back);
+            dl.SetVelForDrill(new Vector3(0f, 0f, -4f));
+            var players = new System.Collections.Generic.List<FootballPlayer> { ol, dl };
+            var contacts = new System.Collections.Generic.List<BodyContact>();
+            FootballBodies.Resolve(players, contacts);
+            float gap = Vector3.Distance(ol.Pos, dl.Pos);
+            sb.AppendLine("A: gap after resolve " + gap.ToString("0.000") + " (want 1.000) contacts " + contacts.Count + " (want 1)");
+            sb.AppendLine("A: ol.z " + ol.Pos.z.ToString("0.000") + " dl.z " + dl.Pos.z.ToString("0.000") + " (equal masses: each moved 0.2)");
+            sb.AppendLine("A: dl.vel.z " + dl.Vel.z.ToString("0.00") + " ol.vel.z " + ol.Vel.z.ToString("0.00") + " (inelastic: both -2.00)");
+            sb.AppendLine("A: closing " + (contacts.Count > 0 ? contacts[0].closing.ToString("0.00") : "-") + " (want 4.00)");
+            bool okA = Mathf.Abs(gap - 1f) < 0.01f && contacts.Count == 1 && Mathf.Abs(dl.Vel.z + 2f) < 0.01f && Mathf.Abs(ol.Vel.z + 2f) < 0.01f;
+            sb.AppendLine(okA ? "A: PASS" : "A: FAIL");
+            // A downed man is immovable: only the standing man moves.
+            ol.Teleport(Vector3.zero, Vector3.forward); dl.Teleport(new Vector3(0f, 0f, 0.6f), Vector3.back);
+            ol.FallDown(2f);
+            FootballBodies.Resolve(players, contacts);
+            sb.AppendLine("A2: downed ol.z " + ol.Pos.z.ToString("0.000") + " (want 0) dl.z " + dl.Pos.z.ToString("0.000") + " (want 1.05 = 0.55 + 0.5)");
+            sb.AppendLine(Mathf.Abs(ol.Pos.z) < 0.001f && Mathf.Abs(dl.Pos.z - 1.05f) < 0.01f ? "A2: PASS" : "A2: FAIL");
+
+            // (B) BlockDrive: + = blocker driven back (m/s).
+            sb.AppendLine("\nB: BlockDrive(passRush, blocking) m/s, lineman on lineman, swing 1");
+            sb.Append("      blk=0.2  0.5  0.8\n");
+            foreach (float pr in new[] { 0.2f, 0.5f, 0.8f })
+            {
+                sb.Append("pr=" + pr.ToString("0.0"));
+                foreach (float bl in new[] { 0.2f, 0.5f, 0.8f })
+                    sb.Append("  " + FootballBodies.BlockDrive(FootballBodies.Push(pr, 1.25f, 1f), FootballBodies.Hold(bl, 1.25f, 1f, true)).ToString("+0.00;-0.00"));
+                sb.AppendLine();
+            }
+            sb.AppendLine("even stats should be ~0; pr 0.8 vs bl 0.2 should be near +" + FootballBodies.MaxDrive);
+
+            // (C) TackleHit vs WrapThreshold.
+            sb.AppendLine("\nC: TackleHit(closing, square) mass 1 vs WrapThreshold " + FootballBodies.WrapThreshold + " — W = wrap, a = arm tackle");
+            sb.Append("           sq=1.0  0.8  0.5  0.3  0.0\n");
+            foreach (float closing in new[] { 0f, 0.5f, 1.5f, 2.5f, 4f, 7f })
+            {
+                sb.Append("close=" + closing.ToString("0.0").PadLeft(4));
+                foreach (float sq in new[] { 1f, 0.8f, 0.5f, 0.3f, 0f })
+                {
+                    float h = FootballBodies.TackleHit(closing, sq, 1f);
+                    sb.Append("  " + h.ToString("0.00") + (h >= FootballBodies.WrapThreshold ? "W" : "a"));
+                }
+                sb.AppendLine();
+            }
+            sb.AppendLine("targets: close 0.5 sq 1.0 = W (a chase-down from behind wraps); close 2.5 sq 0.3 = a (a juke makes it glancing); close 4 sq 0.8 = W");
+        }
+        catch (System.Exception e) { sb.AppendLine("!! EXCEPTION " + e); }
+        finally { if (root != null) Object.DestroyImmediate(root); }
+        System.IO.File.WriteAllText(Out, sb.ToString());
+        Debug.Log("[ContactDrill] wrote " + Out);
+    }
+}
