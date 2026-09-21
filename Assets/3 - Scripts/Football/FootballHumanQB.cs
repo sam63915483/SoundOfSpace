@@ -216,7 +216,7 @@ public class FootballHumanQB : MonoBehaviour
             _equipRetry = 0.6f;
             InteractPromptUI.ShowOneShot("LMB: charge & throw, or run", 3f);
         }
-        if (!_holding) { _charging = false; _charge = 0f; if (_arc != null) _arc.enabled = false; if (_landing != null) _landing.enabled = false; }
+        if (!_holding || (_charging && !Input.GetMouseButton(0)) || Time.time < _downUntil) CancelCharge();
         if (_equipRetry > 0f)
         {
             _equipRetry -= Time.deltaTime;
@@ -345,8 +345,19 @@ public class FootballHumanQB : MonoBehaviour
         }
     }
 
+    /// Drop a throw in progress: the arc and landing ring off, nothing armed.
+    /// (Tackled mid-charge used to leave the arc frozen on screen and the
+    /// charge armed for the next snap.)
+    void CancelCharge()
+    {
+        _charging = false; _charge = 0f; _throwReady = false;
+        if (_arc != null) _arc.enabled = false;
+        if (_landing != null) _landing.enabled = false;
+    }
+
     void OnPlayEnded(PlayInstance.PlayResult r)
     {
+        CancelCharge();
         if (_slot == null || r.carrier != _slot || r.isKickoff) return;
         if (r.outcome == PlayInstance.Outcome.Run || r.outcome == PlayInstance.Outcome.Sack || r.outcome == PlayInstance.Outcome.Fumble || r.outcome == PlayInstance.Outcome.Whistle)
         {
@@ -358,6 +369,12 @@ public class FootballHumanQB : MonoBehaviour
             if (_camFx == null) _camFx = FindObjectOfType<CameraTransformFX>();
             if (_camFx != null) _camFx.TriggerKnockdown(world, Mathf.Max(0.3f, knockdownSeconds - 0.7f));
             InteractPromptUI.ShowOneShot(r.outcome == PlayInstance.Outcome.Sack ? "Sacked!" : "Tackled", 1.5f);
+            var ball = _match.Ball;
+            if (ball != null && ball.state == FootballBall.State.Held && ball.holder == _slot)
+            {
+                _slot.SetHold(HoldStyle.None);
+                ball.Place(_slot.Pos + _slot.Facing * 0.6f);            // down where you were brought down; the centre fetches it
+            }
         }
         else if (r.touchdown) InteractPromptUI.ShowOneShot("TOUCHDOWN!", 3f);
     }
