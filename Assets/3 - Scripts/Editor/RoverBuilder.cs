@@ -90,8 +90,20 @@ public static class RoverBuilder
 
     static Spot VillageSpot(StringBuilder log)
     {
+        // The village square: the Well, with the open side toward House_05
+        // (the houses, tower and mill ring the well within ~15 m; that gap is
+        // the one clear stretch). Falls back to the pool table if the village
+        // has been renamed.
+        var town = GameObject.Find("TOWN-VILLAGE");
+        Transform well = town != null ? town.transform.Find("Well") : null;
+        if (well != null)
+        {
+            Transform open = town.transform.Find("House_05");
+            Vector3 dir = open != null ? open.position - well.position : well.forward;
+            return SpotNear(well.position, dir, 7f, log, "Rover_Village (village square)");
+        }
         var table = Object.FindObjectOfType<PoolTable>(true);
-        if (table == null) { log.AppendLine("Rover_Village: no PoolTable in scene"); return new Spot(); }
+        if (table == null) { log.AppendLine("Rover_Village: no Well or PoolTable in scene"); return new Spot(); }
         return SpotNear(table.transform.position, table.transform.right, 12f, log, "Rover_Village");
     }
 

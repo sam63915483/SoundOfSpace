@@ -2870,6 +2870,6 @@ is the Ship.PilotShip recipe — player GameObject off, real camera on the
 driver's head, all Interactable zones cleared; F again → exit beside the door
 with the rover's velocity). Built from primitives by
 `Editor/RoverBuilder.cs` (Tools ▸ Solar System ▸ Rover) → `Rover.prefab` +
-two scene instances (`Rover_Start` on Icey Twin, `Rover_Village` on Humble
+two scene instances (`Rover_Start` on Icey Twin, `Rover_Village` in the village square by the Well on Humble
 Abode). Home = summon cheat. Full write-up + knobs: `docs/ROVER.md`.
 Not saved, single occupant, no MP sync.

@@ -10,8 +10,8 @@ can be regenerated at any time.
 
 - Prefab: `Assets/1 - samsPrefabs/Rover.prefab` (materials in `Assets/2 - Materials/Rover/`).
 - Scene instances in `1.6.7.7.7.unity`: `Rover_Start` (7 m in front of the Player
-  object's start on Icey Twin) and `Rover_Village` (12 m from the pool table on
-  Humble Abode).
+  object's start on Icey Twin) and `Rover_Village` (in the village square on Humble
+  Abode, 7 m from the Well toward House_05).
 - Rebuild / re-place both: **Tools ▸ Solar System ▸ Rover ▸ Build Rover Prefab + Place In Scene**
   (`Editor/RoverBuilder.cs`). It replaces the two instances by name.
 - Dev cheat: **Home** teleports a rover to 6 m in front of you (needs `Universe.cheatsEnabled`).
