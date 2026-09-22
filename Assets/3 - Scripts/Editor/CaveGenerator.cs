@@ -45,6 +45,11 @@ public static class CaveGenerator
 
     const float NoGrassRadius = 13.5f;
 
+    // Filled by Generate from the layout's computed hole (the cut that covers
+    // every point where the void meets the ground).
+    static float HoleRadiusUsed;
+    static Vector3 HoleCentreUsed;
+
     // ── Layout ───────────────────────────────────────────────────────────────
     // Points are (x, y, z) in metres, +Y out of the ground. Change these freely:
     // they're unioned into a field, so overlapping runs merge into one cavity
@@ -140,9 +145,27 @@ public static class CaveGenerator
         var rooms = new List<CaveSolid.Room>();
         foreach (var r in Rooms) rooms.Add(new CaveSolid.Room { centre = r.c, radius = r.r });
 
-        var solid = CaveSolid.Build(segments, rooms, out int quads);
-
-        if (!SelfCheck(solid)) return;      // refuses to write a broken cave
+        // The solid builder now takes a Layout (styles, real-terrain ground,
+        // curved worlds — see CaveSolid). This legacy planet cave keeps a flat
+        // ground and the Strata recipe; every check happens inside Build.
+        var layout = new CaveSolid.Layout
+        {
+            segments = segments, rooms = rooms,
+            style = CaveSolid.Style.Preset(CaveSolid.Recipe.Strata),
+            ground = CaveSolid.Ground.Flat, bodyRadius = 0f,
+        };
+        var built = CaveSolid.Build(layout);
+        if (!built.ok)
+        {
+            Debug.LogError("[CaveGenerator] " + built.failure + " — nothing was written.");
+            return;
+        }
+        var solid = built.mesh;
+        int quads = built.quads;
+        Debug.Log($"[CaveGenerator] Self-check: closed (0 boundary edges), outward-facing (volume {built.signedVolume:0} m³); {built.mouthReport}; {built.roofReport}; " +
+                  $"{built.trisFull} tris before trim, {built.trisTrimmed} after ({built.trimOpenEdges} buried open edges, shallowest {built.trimShallowest:0.00} m under).");
+        HoleRadiusUsed = layout.holeRadius;
+        HoleCentreUsed = layout.holeCentre;
 
         string shellPath = OutFolder + "/Cave_Interior.asset";
         SaveMesh(solid, shellPath);
@@ -188,50 +211,6 @@ public static class CaveGenerator
                 ra = radii[Mathf.Min(i, radii.Length - 1)],
                 rb = radii[Mathf.Min(i + 1, radii.Length - 1)],
             });
-    }
-
-    // ── Self-check ───────────────────────────────────────────────────────────
-    // Refuses to write a cave that can be seen through. Every previous version
-    // of this generator shipped a see-through mouth that looked fine in a
-    // render, so correctness is measured here, not eyeballed.
-
-    static bool SelfCheck(Mesh mesh)
-    {
-        CaveSolid.CountEdgeDefects(mesh, out int holes, out int nonManifold, out Bounds where);
-        if (holes > 0)
-        {
-            Debug.LogError($"[CaveGenerator] MESH IS NOT CLOSED — {holes} boundary edge(s) around " +
-                           $"{where.center} (extent {where.extents}). That's a literal hole you " +
-                           "can see through. Nothing was written.");
-            return false;
-        }
-        if (nonManifold > 0)
-            Debug.LogWarning($"[CaveGenerator] {nonManifold} non-manifold edge(s) near {where.center} " +
-                             "— a feature pinching out at grid resolution. The surface is still " +
-                             "watertight (nothing renders through it), so this is cosmetic. " +
-                             "Shrink CaveSolid.CellSize if it ever shows.");
-
-        double volume = CaveSolid.SignedVolume(mesh);
-        if (volume <= 0.0)
-        {
-            Debug.LogError($"[CaveGenerator] Mesh is inside-out (signed volume {volume:0}). " +
-                           "Nothing was written.");
-            return false;
-        }
-
-        // Rock must reach ground level outside the cut, or the terrain's cut
-        // edge opens into the void.
-        float innerAtGround = float.MaxValue;
-        foreach (var p in mesh.vertices)
-        {
-            if (Mathf.Abs(p.y) > 0.4f) continue;
-            innerAtGround = Mathf.Min(innerAtGround, new Vector2(p.x, p.z).magnitude);
-        }
-
-        Debug.Log($"[CaveGenerator] Self-check: closed (0 boundary edges), outward-facing " +
-                  $"(volume {volume:0} m³), rock reaches ground level at radius " +
-                  $"{innerAtGround:0.00} (entrance shaft) against a {HoleRadius:0.00} cut.");
-        return true;
     }
 
     // ── Prefab contents ──────────────────────────────────────────────────────
@@ -347,8 +326,9 @@ public static class CaveGenerator
             var col = go.GetComponent<Collider>();
             if (col != null) Object.DestroyImmediate(col);
         }
-        go.transform.localPosition = new Vector3(0f, -1f, 0f);
-        go.transform.localScale = new Vector3(HoleRadius * 2f, 14f, HoleRadius * 2f);
+        float hr = HoleRadiusUsed > 0f ? HoleRadiusUsed : HoleRadius;
+        go.transform.localPosition = new Vector3(HoleCentreUsed.x, -1f, HoleCentreUsed.z);
+        go.transform.localScale = new Vector3(hr * 2f, 14f, hr * 2f);
 
         var hole = Ensure<TerrainHole>(go);
         hole.shape = TerrainHole.Shape.Cylinder;
@@ -439,6 +419,7 @@ public static class CaveGenerator
         existing.uv = mesh.uv;
         existing.triangles = mesh.triangles;
         existing.normals = mesh.normals;
+        existing.colors = mesh.colors;
         existing.tangents = mesh.tangents;
         existing.RecalculateBounds();
         EditorUtility.SetDirty(existing);

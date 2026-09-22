@@ -1,5 +1,90 @@
 # Caves — generating and placing them
 
+> **2026-09-22 — THE MOON CAVES are the live version of this system.** The
+> Humble Abode cave below is the first-generation prototype (disabled in the
+> scene, Sam does not want it back). Everything from "The cave is ONE SOLID"
+> onward still applies, but the current generator is `CaveSolid.Build(Layout)`
+> driven by `Editor/MoonCaveInstaller.cs`.
+
+## Moon caves (Constant Companion) — `Tools ▸ Cave ▸ Install Moon Caves`
+
+Three explorable caves on the moon, replacing the tube that ran through it.
+Spec: `docs/superpowers/specs/2026-09-22-moon-caves-design.md`.
+
+| Cave | Prefab | Recipe | Mouth | Layout |
+|---|---|---|---|---|
+| A — the Warren | `Cave/Moon/Cave_Moon_A` | Strata (angular ledges, boulders) | eyebrow overhang | ramp, early fork, loop through a low wide cavern to a tall chamber, pockets, lower level |
+| B — the Descent | `Cave_Moon_B` | Dripstone (stalactites, columns, flowstone streaks) | tall fissure in a big outcrop | switchbacks through three stacked caverns, side tunnels, a crawl at the bottom |
+| C — the Hall | `Cave_Moon_C` | Collapse (broken blocks, rubble, pillars) | wide low collapse | one long hall, branches left and right, rear chamber, deep room |
+
+**Why the moon works where Humble Abode failed:** no atmosphere, no ocean.
+Gravity already falls off linearly inside a body. The horizon culler exempts
+anything reaching into its body and never touches the caves (they are not on
+its cluster-name list), so they are never switched off at a distance — which
+is what made the tube read as an empty hole from Humble Abode (its 33 lights
+went off past 150 m; an unlit pipe with no sun inside renders black).
+
+**How the installer works.** It deletes `Tunnel Rig`, builds a hidden LOD0
+preview of the moon's REAL terrain (TutorialGrassBake's recipe — a DontSave
+generator ticked by reflection), and for each site samples the terrain into a
+cave-local heightmap (±45 m at 0.5 m). The cave is generated *against that
+ground*: a rock slab follows the terrain 0.3 m under it around the mouth, the
+outcrop stands on it, and the passage enters through the outcrop. Re-run after
+changing a layout; assets are patched in place and instances keep their links.
+
+**Coordinates.** Layouts are authored as (x lateral, d depth below the mouth
+sphere, s arc along the tunnel). The moon is only ~51 m in radius, so at 20 m
+down the sphere a tunnel runs on is 30 m in radius — the same arc is 40%
+shorter and the same drop far steeper. Depths beyond 8 m are scaled by 0.55 for
+that reason (`DepthScale`); the installer measures the real slopes. "Up" is the
+local radial direction everywhere (floors, cross-sections, strata, exposure).
+
+**The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
+(vertices split per triangle), ridged + domain-warped noise with depth-banded
+STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up
+to 30° of slope, stalactites / stalagmites / columns / boulders / blocks /
+rubble built into the same solid, and a triplanar rock material
+(`Custom/CaveRock`, `Assets/Shaders/CaveRock.shader`) with procedural albedo +
+normal per recipe (`CaveRockTextures`).
+
+**Dark inside.** Each vertex stores SKY EXPOSURE in its colour alpha (rays
+marched through the sampled field). The shader multiplies the directional light
+and ambient by it; point/spot lights (flashlight on **E**, the pocket lights in
+the big rooms) are not scaled. The mouth is lit by real sun, the interior is
+black without a light. `_ExposureFloor` on the material is the minimum.
+
+**Checks — the installer refuses to write on any failure:**
+1. closed mesh (0 boundary edges), positive signed volume;
+2. *the hole sees rock*: at 72 angles around the cut, the highest rock is within 0.6 m of the terrain;
+3. *every passage has a roof*: marching up from each roof finds rock within 3.5 m (catches the terrain clip and an outcrop too small to cover the entrance);
+4. walkable: every room reachable from the mouth over legs ≤ 27°;
+5. no overlap: ≥ 4 m of rock between caves, ≥ 12 m from the core, ≥ 15 m from the moon base;
+6. the buried-hull trim (halves the triangle count) created no open edge shallower than 0.8 m.
+
+**Things learned building it (each cost a run):**
+- Every void point that meets the terrain must be inside the `TerrainHole`. The
+  terrain sheet outside it is invisible from below but SOLID to physics and
+  visible from above. The installer sizes the hole from the actual crossing
+  points (`ComputeHole`), which is why the moon holes are ~9-10 m in radius.
+- The outcrop is not decoration — it is the roof of the entrance ramp until the
+  passage is deep enough. Too small an outcrop = open sky over the ramp.
+- Roof probes at fixed offsets above a passage false-fail: the wall noise moves
+  the rock band by up to a metre, and a tunnel sample inside a big room has the
+  room's roof 9 m up. March for rock instead, and skip samples inside rooms.
+- Non-manifold edges (stalactite tips pinching at grid resolution) are not
+  holes; count only edges used once.
+- Walls are 3.0 m thick (2.2 thinned to nothing under roof noise at one room).
+
+**Runtime pieces reused as-is:** `CaveHoleBinder` (adds the puncher),
+`PlanetHolePuncher` (cuts all LODs + colliders), `CaveVolume` (capsules; new
+`affectsOcean = false` so the 32-capsule ocean cutout ignores the moon caves),
+`CaveCrystalSeeder` (minable crystals on the walls), `NoGrassVolume`.
+
+---
+
+## The original Humble Abode cave (prototype, disabled)
+
+
 **Yes, this works.** `PlanetHolePuncher` already proved it on the moon tunnel;
 a cave is the same trick with only one mouth instead of two.
 

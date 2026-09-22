@@ -106,7 +106,7 @@ Eight `CelestialBody` instances live under the `--- Celestial ---` section (veri
 | Fiery Twin | Hot inner planet |
 | Icey Twin | Cold inner planet |
 | Humble Abode | Player's home — village, fish market, bakery, start cabin, ship marketplace, two concert stages |
-| Constant Companion | Humble Abode's moon — hosts the `MoonBase` (sFuture Modules Pro panels + glass) |
+| Constant Companion | Humble Abode's moon — hosts the `MoonBase` (sFuture Modules Pro panels + glass) and, since 2026-09-22, three explorable caves (`Cave_Moon_A/B/C`, `Tools ▸ Cave ▸ Install Moon Caves`, see `docs/CAVES.md`); the tube through it is gone |
 | Cyclops | Big mid-system planet |
 | Tumbling Bean | Eccentric tumbling rock |
 | Watchful Eye | Outer planet |
@@ -2873,3 +2873,39 @@ with the rover's velocity). Built from primitives by
 two scene instances (`Rover_Start` on Icey Twin, `Rover_Village` in the village square by the Well on Humble
 Abode). Home = summon cheat. Full write-up + knobs: `docs/ROVER.md`.
 Not saved, single occupant, no MP sync.
+
+### 2026-09-22 — rover appearance + amphibious outboard
+
+Sam requested a stronger ATV / Warthog-inspired look while preserving the
+land handling. `Editor/RoverArtBuilder.cs` now bakes angular olive armour,
+roll cage, bucket seats, detailed tyres, grille, bumpers, and a rear outboard.
+`Vehicles/RoverPresentation.cs` animates four exposed coil-over springs,
+damper pistons / wishbones and the steering wheel. Existing prefab placements,
+12 solid colliders, single Rigidbody and land tuning are retained.
+
+`RoverController.UpdateWater` keeps the existing spherical wheel buoyancy and
+replaces paddle drive with deployed, submerged outboard propulsion. W/S drives
+and reverses the propeller; A/D steers the swivel and hull. Deployment is smooth,
+with shoreline hysteresis; dry prop / oceanless planet / cave / no driver gates
+prevent thrust. Spray is one capped 48-particle system in planet-local space.
+51 renderers versus 76 originally; about 18k triangles; no additional lights.
+
+Unity compilation, prefab wiring, terrain settling, rendered previews, and
+isolated water-physics / presentation checks passed. Whole-game FPS and human
+driving approval are not yet measured. See `docs/ROVER.md` for verification and
+the non-destructive prefab-upgrade menu; `tools/RoverReview.cs` is the MCP harness.
+
+**Water/jump playtest follow-up (2026-09-22):** Sam flagged the fully extended
+wheels in water, long outboard, and floaty jumps. No-contact wheels now sit at
+`restLength`, and wheel buoyancy cannot use longer probe positions; the floating
+chassis settles ~0.55 m lower. Outboard hinge-to-prop length shortened 1.70 →
+1.15 m. Added rover-only `airborneGravityMultiplier = 1.65` (short ramp, no
+horizontal/orbital acceleration change, grounded/water suppression). Water tests
+with the shorter motor passed; jump A/B gave 1.76 → 1.12 s airtime for the same
+launch. No extra per-frame searches, particles or physics bodies.
+
+**Small water tuning follow-up:** W/S now visually spin all four wheels while
+afloat (smoothed forward/reverse, no extra physics force). Water thrust and yaw
+authority increased 50% (`waterAccel` 13.5, `waterYawAccel` 2.1), including saved
+prefab values; speed caps unchanged. Compilation checked only, no Play mode
+tests at Sam's explicit request.

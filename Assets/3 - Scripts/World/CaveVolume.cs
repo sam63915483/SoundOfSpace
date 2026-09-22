@@ -60,6 +60,9 @@ public class CaveVolume : MonoBehaviour
     [Tooltip("LEGACY ESCAPE HATCH — leave OFF. Switches the planet's oceans off entirely while the camera is inside this cave. Superseded by the analytic cutout in OceanEffect.shader, which removes water only from the cave.")]
     public bool suppressOcean = false;
 
+    [Tooltip("Feed this cave's capsules to the ocean cutout shader. Leave OFF on a body with no ocean (the moon caves): the cutout takes at most 32 capsules in total and would waste them on water that isn't there.")]
+    public bool affectsOcean = true;
+
     // How many caves currently contain the camera. Oceans go back on at zero.
     static int s_oceanSuppressors;
     static PlanetEffects[] s_planetEffects;

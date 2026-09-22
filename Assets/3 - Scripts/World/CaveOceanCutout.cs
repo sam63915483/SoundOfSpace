@@ -89,7 +89,7 @@ public class CaveOceanCutout : MonoBehaviour
         for (int c = 0; c < caves.Count && n < MaxCapsules; c++)
         {
             var cave = caves[c];
-            if (cave == null || cave.capsuleA == null) continue;
+            if (cave == null || cave.capsuleA == null || !cave.affectsOcean) continue;
 
             int count = Mathf.Min(cave.capsuleA.Length,
                         Mathf.Min(cave.capsuleB.Length, cave.capsuleR.Length));
