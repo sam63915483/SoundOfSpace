@@ -2859,3 +2859,17 @@ markets, bonfire, table_02) re-baked via `MeshCombineTool.RecombineOne`.
 - **Rider release camera hold** (`RiderReleaseBleed`) now carries its held point with `PlayerController.WalkVelocity`, so walking out during the door fold no longer separates camera and body.
 - **Trees ×1.3:** `TreeSpawner.densityMultiplier` (code default 1.3, scales chance + cap); `PlanetOxygen.treesForFullO2PerMillionSqm` 2300→2990 to hold O2.
 - **Skybox:** NASA Deep Star Map 2020 8k (PNG, BC7, panoramic) via `Custom/StarSkybox` (`Assets/Shaders/StarSkybox.shader`): Unity's panoramic mapping + pole-safe mip selection + procedural sharp stars (two grids, 4/8-point spikes, twinkle/breathing, capped at the map's peak). Same material asset/GUID (`Starmap 2020 Skybox.mat`), so both scenes + MenuOrbit + the black hole probe (cubemap copy carrying the old texture's GUID) follow with no scene edits. Old ESO TIF removed.
+
+## Addendum 2026-09-22 — the rover / ATV (built, playtest pending)
+
+A drivable four-wheel ATV: `Vehicles/RoverController.cs` (one Rigidbody,
+raycast suspension, planet-relative tyre physics, anchor-frame gravity, wheel
+buoyancy, air-righting, Space-charged hop), `Vehicles/RoverSeat.cs`
+(Interactable: look at the driver's seat, F → `RoverController.Board`, which
+is the Ship.PilotShip recipe — player GameObject off, real camera on the
+driver's head, all Interactable zones cleared; F again → exit beside the door
+with the rover's velocity). Built from primitives by
+`Editor/RoverBuilder.cs` (Tools ▸ Solar System ▸ Rover) → `Rover.prefab` +
+two scene instances (`Rover_Start` on Icey Twin, `Rover_Village` on Humble
+Abode). Home = summon cheat. Full write-up + knobs: `docs/ROVER.md`.
+Not saved, single occupant, no MP sync.
