@@ -23,8 +23,6 @@ can be regenerated at any time.
 | W / S | throttle / reverse (S while rolling forward = brake) |
 | A / D | steer (less lock the faster you go) |
 | Space (on the wheels) | tap = hop; hold = the suspension squats, release = bigger jump |
-| W/A/S/D (off the wheels) | side thrusters: thrust in the rover's own frame — airborne or afloat |
-| Space / Ctrl (off the wheels) | thrust up / down |
 | Mouse | look around (clamped to ±150° so you can't look through your own head) |
 | V | chase camera |
 | F | get out (beside the driver's door). No prompt on purpose: F in, F out. |
@@ -47,12 +45,6 @@ can be regenerated at any time.
   submerged; W/S paddle, A/D turn, wheels spin like paddle wheels.
 - **Airborne / flipped**: torque toward gravity-up so it lands on its wheels;
   if it sits on its side or roof for 1.5 s it rights itself.
-- **Thrusters** (2026-09-22, round 2): two side pods with gimballing nozzles.
-  Off the wheels (fewer than two touching, or afloat) W/S/A/D thrust in the
-  rover's frame, Space up, Ctrl down (`thrustAccel`, `thrustUpAccel`,
-  `thrustDownAccel`). The flames are the jetpack's own recipe
-  (`JetpackThrusters.BuildFlame/BuildSmoke`, now public static) plus one glow
-  light; the nozzle turns to fire opposite the thrust.
 - **Heavy and planted**: 1500 kg, `groundedDownforce` (extra 45 % of gravity
   while any wheel touches), rebound damping 1.5× / compression 0.8×, longer
   travel (`maxLength` 1.05) so wheels keep the ground over crests. Fenders sit
@@ -95,3 +87,4 @@ can be regenerated at any time.
 - Passenger seat is decoration (one occupant; no co-op sync).
 - Not in the save file.
 - No dust / tyre marks / damage.
+- Side thrusters were built and removed the same day (Sam: "I don't really like it"). Don't bring them back.

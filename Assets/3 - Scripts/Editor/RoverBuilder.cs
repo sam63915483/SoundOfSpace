@@ -265,26 +265,6 @@ public static class RoverBuilder
             }
         }
 
-        // Side thrusters: a bell on each flank with a gimballing nozzle inside
-        // (+Z = exhaust). RoverController points the nozzle away from the thrust
-        // and drives the jetpack-recipe flame on it.
-        var nozzles = new Transform[2];
-        for (int i = 0; i < 2; i++)
-        {
-            float sx = i == 0 ? -1f : 1f;
-            string side = i == 0 ? "L" : "R";
-            var pod = new GameObject("ThrusterPod" + side);
-            pod.transform.SetParent(t, false);
-            pod.transform.localPosition = new Vector3(sx * 0.90f, 0.76f, -0.12f);
-            Prim(pod.transform, "Bell", PrimitiveType.Cylinder, new Vector3(sx * 0.06f, 0f, 0f), new Vector3(0, 0, 90f), new Vector3(0.30f, 0.14f, 0.30f), m.dark, false);
-            Prim(pod.transform, "Mount", PrimitiveType.Cube, new Vector3(-sx * 0.12f, -0.06f, 0f), Vector3.zero, new Vector3(0.16f, 0.22f, 0.36f), m.chrome, false);
-            var nozzle = new GameObject("ThrusterNozzle" + side);
-            nozzle.transform.SetParent(pod.transform, false);
-            nozzle.transform.localPosition = new Vector3(sx * 0.10f, 0f, 0f);
-            nozzles[i] = nozzle.transform;
-        }
-        ctrl.thrusterNozzles = nozzles;
-
         // Driver eye + exit spot
         var head = new GameObject("DriverHead");
         head.transform.SetParent(t, false);
