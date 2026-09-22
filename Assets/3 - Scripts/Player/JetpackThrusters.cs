@@ -307,6 +307,13 @@ public class JetpackThrusters : MonoBehaviour
     }
 
     ParticleSystem BuildFlame(Transform nozzle)
+        => BuildFlame(nozzle, flameLifetime, flameSpeed, flameSize, coneAngle, nozzleMouthOffset, coreColor, tailColor);
+
+    /// <summary>The jetpack's flame, reusable by anything with a nozzle — the
+    /// rover's side thrusters are built with this exact call (2026-09-22).
+    /// Emits along the nozzle's +Z; the caller drives emission.rateOverTime.</summary>
+    public static ParticleSystem BuildFlame(Transform nozzle, float flameLifetime, float flameSpeed, float flameSize,
+                                            float coneAngle, float nozzleMouthOffset, Color coreColor, Color tailColor)
     {
         var go = new GameObject("~flame " + nozzle.name);
         go.transform.SetParent(nozzle, false);
@@ -372,6 +379,12 @@ public class JetpackThrusters : MonoBehaviour
     // The space is re-pointed every frame in LateUpdate (SyncSmokeSpace) as the
     // player crosses from one body's influence to the next.
     ParticleSystem BuildSmoke(Transform flame)
+        => BuildSmoke(flame, SmokeSpace(), smokeRate, smokeLifetime, smokeSize, smokeColor, flameSpeed, coneAngle, nozzleMouthOffset);
+
+    /// <summary>The jetpack's smoke puffs, simulated in <paramref name="smokeSpace"/>
+    /// (the reference planet's transform — see the note above).</summary>
+    public static ParticleSystem BuildSmoke(Transform flame, Transform smokeSpace, float smokeRate, float smokeLifetime,
+                                            float smokeSize, Color smokeColor, float flameSpeed, float coneAngle, float nozzleMouthOffset)
     {
         if (smokeRate <= 0f) return null;
         var go = new GameObject("~smoke");
@@ -389,7 +402,7 @@ public class JetpackThrusters : MonoBehaviour
         main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
         main.startColor = smokeColor;
         main.simulationSpace = ParticleSystemSimulationSpace.Custom;
-        main.customSimulationSpace = SmokeSpace();
+        main.customSimulationSpace = smokeSpace;
         main.scalingMode = ParticleSystemScalingMode.Local;
         main.maxParticles = 120;
 

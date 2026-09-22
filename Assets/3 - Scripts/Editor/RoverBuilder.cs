@@ -167,7 +167,7 @@ public static class RoverBuilder
     {
         var root = new GameObject("Rover");
         var rb = root.AddComponent<Rigidbody>();
-        rb.mass = 800f;
+        rb.mass = 1500f;
         rb.useGravity = false;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         var ctrl = root.AddComponent<RoverController>();
@@ -182,7 +182,8 @@ public static class RoverBuilder
         Prim(t, "Floor", PrimitiveType.Cube, new Vector3(0, 0.62f, 0.15f), Vector3.zero, new Vector3(1.4f, 0.04f, 1.1f), m.dark, false);
         // Fenders over each wheel
         foreach (var sx in new[] { -1f, 1f }) foreach (var sz in new[] { -1f, 1f })
-            Prim(t, "Fender", PrimitiveType.Cube, new Vector3(sx * 1.0f, 0.55f, sz * 1.15f), Vector3.zero, new Vector3(0.55f, 0.12f, 1.05f), m.dark, false);
+            // Sits above the wheel's top at FULL compression (hardpoint 0.30 - minLength 0.16 + radius 0.55 = 0.69): no clipping when the suspension loads up.
+            Prim(t, "Fender", PrimitiveType.Cube, new Vector3(sx * 1.0f, 0.80f, sz * 1.15f), Vector3.zero, new Vector3(0.55f, 0.16f, 1.05f), m.dark, false);
 
         // Headlights: two lamp blocks + ONE real spot light (pixel-light budget).
         Prim(t, "LampL", PrimitiveType.Cube, new Vector3(-0.5f, 0.74f, 1.51f), Vector3.zero, new Vector3(0.24f, 0.14f, 0.06f), m.lamp, false);
@@ -233,8 +234,8 @@ public static class RoverBuilder
         // Wheels: hardpoint (physics) + visual pivot (steer/spin) + tyre + hub + spokes
         string[] names = { "FL", "FR", "RL", "RR" };
         Vector3[] hp = {
-            new Vector3(-1.0f, 0.25f,  1.15f), new Vector3(1.0f, 0.25f,  1.15f),
-            new Vector3(-1.0f, 0.25f, -1.15f), new Vector3(1.0f, 0.25f, -1.15f),
+            new Vector3(-1.0f, 0.30f,  1.15f), new Vector3(1.0f, 0.30f,  1.15f),
+            new Vector3(-1.0f, 0.30f, -1.15f), new Vector3(1.0f, 0.30f, -1.15f),
         };
         ctrl.wheelHardpoints = new Transform[4];
         ctrl.wheelVisuals = new Transform[4];
@@ -263,6 +264,26 @@ public static class RoverBuilder
                 block.transform.localPosition = Quaternion.Euler(a, 0, 0) * new Vector3(0, r * 0.98f, 0);
             }
         }
+
+        // Side thrusters: a bell on each flank with a gimballing nozzle inside
+        // (+Z = exhaust). RoverController points the nozzle away from the thrust
+        // and drives the jetpack-recipe flame on it.
+        var nozzles = new Transform[2];
+        for (int i = 0; i < 2; i++)
+        {
+            float sx = i == 0 ? -1f : 1f;
+            string side = i == 0 ? "L" : "R";
+            var pod = new GameObject("ThrusterPod" + side);
+            pod.transform.SetParent(t, false);
+            pod.transform.localPosition = new Vector3(sx * 0.90f, 0.76f, -0.12f);
+            Prim(pod.transform, "Bell", PrimitiveType.Cylinder, new Vector3(sx * 0.06f, 0f, 0f), new Vector3(0, 0, 90f), new Vector3(0.30f, 0.14f, 0.30f), m.dark, false);
+            Prim(pod.transform, "Mount", PrimitiveType.Cube, new Vector3(-sx * 0.12f, -0.06f, 0f), Vector3.zero, new Vector3(0.16f, 0.22f, 0.36f), m.chrome, false);
+            var nozzle = new GameObject("ThrusterNozzle" + side);
+            nozzle.transform.SetParent(pod.transform, false);
+            nozzle.transform.localPosition = new Vector3(sx * 0.10f, 0f, 0f);
+            nozzles[i] = nozzle.transform;
+        }
+        ctrl.thrusterNozzles = nozzles;
 
         // Driver eye + exit spot
         var head = new GameObject("DriverHead");

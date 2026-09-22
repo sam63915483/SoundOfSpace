@@ -52,21 +52,21 @@ public class RoverController : MonoBehaviour
     [Header("Wheels + suspension")]
     public float wheelRadius = 0.55f;
     [Tooltip("Suspension length (hardpoint → wheel centre) with no load on it.")]
-    public float restLength = 0.45f;
+    public float restLength = 0.5f;
     [Tooltip("Longest the suspension can droop to (wheel hunting for ground).")]
-    public float maxLength = 0.8f;
+    public float maxLength = 1.05f;
     [Tooltip("Shortest it compresses to before the bump stop takes over.")]
-    public float minLength = 0.08f;
+    public float minLength = 0.16f;
     [Tooltip("Spring natural frequency, Hz. Lower = softer, floatier. 1.3-1.6 is an ATV.")]
-    public float springFrequencyHz = 1.4f;
+    public float springFrequencyHz = 1.15f;
     [Tooltip("Damping ratio. 1 = no overshoot. 0.3 = bouncy, settles in ~2 bounces.")]
-    [Range(0.05f, 1.5f)] public float dampingRatio = 0.32f;
+    [Range(0.05f, 1.5f)] public float dampingRatio = 0.42f;
     [Tooltip("Bump stop stiffness, as a multiple of the spring.")]
     public float bumpStopMultiplier = 6f;
 
     [Header("Drive")]
     [Tooltip("Forward acceleration on flat ground, m/s² (all wheels).")]
-    public float driveAccel = 9f;
+    public float driveAccel = 11f;
     public float maxSpeed = 20f;
     public float reverseMaxSpeed = 8f;
     [Tooltip("Braking (S while rolling forward), m/s².")]
@@ -86,7 +86,7 @@ public class RoverController : MonoBehaviour
     [Tooltip("Sideways slip → force, 1/s. Higher = more on rails.")]
     public float lateralStiffness = 14f;
     [Tooltip("Friction circle: max tyre force as a multiple of the wheel's normal load.")]
-    public float tyreFriction = 1.3f;
+    public float tyreFriction = 1.5f;
 
     [Header("Air + righting")]
     [Tooltip("Torque toward gravity-up while airborne (so it lands on its wheels).")]
@@ -99,12 +99,12 @@ public class RoverController : MonoBehaviour
     [Tooltip("Buoyancy per fully-submerged wheel as a multiple of the wheel's share of weight. >1 floats.")]
     public float wheelBuoyancy = 1.7f;
     [Tooltip("Sideways water drag, 1/s (scaled by how submerged).")]
-    public float waterDrag = 1.1f;
+    public float waterDrag = 0.55f;
     [Tooltip("Up/down water drag, 1/s (kills bobbing).")]
     public float waterVerticalDrag = 3.0f;
     [Tooltip("Paddle-wheel thrust while afloat, m/s².")]
-    public float waterAccel = 3.5f;
-    public float waterMaxSpeed = 7f;
+    public float waterAccel = 9f;
+    public float waterMaxSpeed = 14f;
     [Tooltip("Yaw authority while afloat, rad/s².")]
     public float waterYawAccel = 1.4f;
 
@@ -129,6 +129,24 @@ public class RoverController : MonoBehaviour
 
     [Header("Engine sound")]
     [Range(0f, 1f)] public float engineVolume = 0.28f;
+
+    [Header("Thrusters (airborne / afloat) — appended 2026-09-22")]
+    [Tooltip("Nozzle transforms (+Z = exhaust), gimballed toward the thrust every frame. Set by RoverBuilder.")]
+    public Transform[] thrusterNozzles = new Transform[0];
+    [Tooltip("W/S/A/D thrust off the wheels, m/s².")]
+    public float thrustAccel = 14f;
+    [Tooltip("Space: upward thrust, m/s². Has to beat the planet's gravity (8-10) to climb.")]
+    public float thrustUpAccel = 18f;
+    [Tooltip("Ctrl: downward thrust, m/s².")]
+    public float thrustDownAccel = 12f;
+    [Tooltip("Extra push into the ground while any wheel touches, as a fraction of gravity — the 'heavy and planted' feel; more normal load = more grip.")]
+    public float groundedDownforce = 0.45f;
+    [Tooltip("Damping multiplier while a wheel EXTENDS (rebound). >1 stops the rover pogoing off bumps.")]
+    public float reboundDampingScale = 1.5f;
+    [Tooltip("Damping multiplier while a wheel COMPRESSES.")]
+    public float compressionDampingScale = 0.8f;
+    [Tooltip("Flame particle size, metres (the jetpack uses 0.17).")]
+    public float thrusterFlameSize = 0.26f;
 
     // ── runtime ─────────────────────────────────────────────────────────────
     Rigidbody _rb;
@@ -184,6 +202,23 @@ public class RoverController : MonoBehaviour
     // Engine
     AudioSource _engine;
     float _enginePitch = 0.6f;
+    // Thrusters
+    class ThrusterFx
+    {
+        public Transform nozzle;
+        public ParticleSystem flame, smoke;
+        public ParticleSystem.EmissionModule emission, smokeEmission;
+        public ParticleSystem.MainModule main;
+        public float level;
+    }
+    readonly List<ThrusterFx> _thrusterFx = new List<ThrusterFx>();
+    Vector3 _thrustInput;        // rover-local: x = A/D, y = Space/Ctrl, z = W/S
+    Vector3 _thrustLocalVis;     // last step's thrust, rover-local (flames point the other way)
+    float _thrustLevelVis;
+    Transform _smokeSpace;
+    Light _thrustGlow;
+    GrassPointLight _thrustGlowMarker;
+    float _thrustGlowLevel;
     // Cast mask: everything solid except the layers that are never ground.
     int _groundMask;
     // Interactables scan cache (board/exit only)
@@ -205,7 +240,7 @@ public class RoverController : MonoBehaviour
         _rb.drag = 0f;
         _rb.isKinematic = true;          // parked kinematic until the ground snap finds real terrain
         _rb.maxAngularVelocity = 12f;
-        if (_rb.mass < 100f) _rb.mass = 800f;
+        if (_rb.mass < 100f) _rb.mass = 1500f;
         // Low centre of mass (near the axles) so grip forces at the contact
         // patch can't roll it in a corner; the wide track does the rest.
         _rb.centerOfMass = new Vector3(0f, -0.35f, 0f);
@@ -227,6 +262,7 @@ public class RoverController : MonoBehaviour
         if (_endless != null) _endless.RegisterPhysicsObject(transform);
         ElectAnchor();
         RememberSpawnLocal();
+        BuildThrusterFx();
     }
 
     void RememberSpawnLocal()
@@ -310,7 +346,6 @@ public class RoverController : MonoBehaviour
         if (!_settled) Settle(true);
         _rb.isKinematic = false;
         SetHeadlights(true);
-        InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to get out");
         Debug.Log("[Rover] boarded");
     }
 
@@ -320,9 +355,9 @@ public class RoverController : MonoBehaviour
         var pc = _driver;
         _driver = null;
         if (Active == this) Active = null;
-        InteractPromptUI.Clear(this);
         SetHeadlights(false);
         _throttle = 0f; _steerInput = 0f; _charging = false; _charge = 0f;
+        _thrustInput = Vector3.zero;
 
         Transform ep = exitPoint != null ? exitPoint : transform;
         Vector3 pos = ep.position;
@@ -377,18 +412,27 @@ public class RoverController : MonoBehaviour
                 _throttle = TutorialGate.MoveAxisVertical(TutorialAbility.Move);
                 _steerInput = TutorialGate.MoveAxisHorizontal(TutorialAbility.Move);
 
-                // Jump charge: hold squats the suspension, release pops it.
+                // On the wheels: Space charges the suspension, release pops it.
+                // Off the wheels (airborne / afloat): Space, Ctrl and WASD are the
+                // thrusters (physics decides when they may fire).
                 bool held = TutorialGate.JumpHeld(TutorialAbility.Jump);
-                if (held && _jumpCooldown <= 0f)
+                bool down = TutorialGate.DownThrustHeld(TutorialAbility.Jump);
+                bool onWheels = _groundedCount >= 2 && !_afloat;
+                if (onWheels)
                 {
-                    _charging = true;
-                    _charge = Mathf.Min(1f, _charge + dt / Mathf.Max(0.1f, chargeSeconds));
+                    if (held && _jumpCooldown <= 0f)
+                    {
+                        _charging = true;
+                        _charge = Mathf.Min(1f, _charge + dt / Mathf.Max(0.1f, chargeSeconds));
+                    }
+                    else if (_charging && !held)
+                    {
+                        _jumpRequested = true;   // consumed in FixedUpdate
+                        _charging = false;
+                    }
                 }
-                else if (_charging && !held)
-                {
-                    _jumpRequested = true;   // consumed in FixedUpdate
-                    _charging = false;
-                }
+                else { _charging = false; _charge = 0f; }
+                _thrustInput = new Vector3(_steerInput, (held ? 1f : 0f) - (down ? 1f : 0f), _throttle);
 
                 bool exitPressed = Input.GetKeyDown(KeyCode.F) || TutorialGate.PadPressed(TutorialGate.PadButton.X);
                 if (exitPressed && Time.frameCount != _boardFrame) { Exit(); return; }
@@ -410,12 +454,12 @@ public class RoverController : MonoBehaviour
             }
             else
             {
-                _throttle = 0f; _steerInput = 0f;
+                _throttle = 0f; _steerInput = 0f; _thrustInput = Vector3.zero;
             }
         }
         else
         {
-            _throttle = 0f; _steerInput = 0f; _charging = false; _charge = 0f;
+            _throttle = 0f; _steerInput = 0f; _charging = false; _charge = 0f; _thrustInput = Vector3.zero;
             // Dev: Home summons the rover to the player's feet (Universe.cheatsEnabled).
             if (Universe.cheatsEnabled && Input.GetKeyDown(KeyCode.Home) && !IsDriving) SummonToPlayer();
         }
@@ -429,6 +473,7 @@ public class RoverController : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateThrusterFx(Time.deltaTime);
         if (_driver == null || _cam == null || _camRig == null) return;
         // Stabilised head: blend the chassis attitude toward a gravity-level
         // frame so bumps don't throw the whole view around.
@@ -543,7 +588,10 @@ public class RoverController : MonoBehaviour
             Vector3 vPoint = _rb.GetPointVelocity(hp.position) - _groundVel;
             float vAlong = Vector3.Dot(vPoint, up);
             float compression = rest - len;
-            float f = k * compression - c * vAlong;
+            // Rebound (extending, vAlong > 0) is damped harder than compression:
+            // that is what stops a bump launching the rover and losing traction.
+            float cEff = c * (vAlong > 0f ? reboundDampingScale : compressionDampingScale);
+            float f = k * compression - cEff * vAlong;
             if (len < minLength) f += k * bumpStopMultiplier * (minLength - len);
             if (f < 0f) f = 0f;
             _normalForce[i] = f;
@@ -589,7 +637,31 @@ public class RoverController : MonoBehaviour
             _rb.AddForceAtPosition(tyre, contact, ForceMode.Force);
         }
 
+        // Planted: while any wheel touches, lean on the ground a bit harder than
+        // gravity alone. Heavier feel, more normal load, more grip.
+        if (_groundedCount > 0 && groundedDownforce > 0f)
+            _rb.AddForce(-_gravUp * (_gravMag * groundedDownforce), ForceMode.Acceleration);
+
         UpdateWater(dt, mw);
+
+        // Thrusters: only off the wheels (airborne or afloat). W/S/A/D in the
+        // rover's own frame flattened to the planet, Space/Ctrl along gravity.
+        bool thrustersLive = _driver != null && (_groundedCount < 2 || _afloat) && _thrustInput.sqrMagnitude > 0.001f;
+        Vector3 thrustWorld = Vector3.zero;
+        if (thrustersLive)
+        {
+            Vector3 tf = Vector3.ProjectOnPlane(transform.forward, _gravUp);
+            if (tf.sqrMagnitude < 1e-4f) tf = Vector3.ProjectOnPlane(transform.up, _gravUp);
+            tf.Normalize();
+            Vector3 tr = Vector3.Cross(_gravUp, tf).normalized;
+            Vector3 lateral = tr * _thrustInput.x + tf * _thrustInput.z;
+            if (lateral.sqrMagnitude > 1f) lateral.Normalize();
+            float vert = _thrustInput.y > 0f ? _thrustInput.y * thrustUpAccel : _thrustInput.y * thrustDownAccel;
+            thrustWorld = lateral * thrustAccel + _gravUp * vert;
+            _rb.AddForce(thrustWorld, ForceMode.Acceleration);
+        }
+        _thrustLocalVis = transform.InverseTransformDirection(thrustWorld);
+        _thrustLevelVis = thrustersLive ? Mathf.Clamp01(thrustWorld.magnitude / Mathf.Max(1f, thrustAccel)) : 0f;
 
         // Airborne: turn toward gravity-up so it lands on its wheels.
         bool airborne = _groundedCount < 2 && !_afloat;
@@ -810,6 +882,98 @@ public class RoverController : MonoBehaviour
             float steer = i < 2 ? _steerDeg : 0f;
             vis.localRotation = Quaternion.Euler(0f, steer, 0f) * Quaternion.Euler(_spinDeg[i], 0f, 0f);
         }
+    }
+
+    // ── Thruster flames: the jetpack's own recipe (JetpackThrusters.BuildFlame) ──
+
+    Transform SmokeSpace() => _anchor != null ? _anchor.transform : transform;
+
+    void BuildThrusterFx()
+    {
+        _thrusterFx.Clear();
+        if (thrusterNozzles == null) return;
+        var core = new Color(1f, 0.95f, 0.75f, 1f);
+        var tail = new Color(1f, 0.45f, 0.08f, 0f);
+        var smoke = new Color(0.55f, 0.55f, 0.58f, 0.35f);
+        const float speed = 11f, cone = 9f, mouth = 0.17f;
+        for (int i = 0; i < thrusterNozzles.Length; i++)
+        {
+            var n = thrusterNozzles[i];
+            if (n == null) continue;
+            var fx = new ThrusterFx { nozzle = n };
+            fx.flame = JetpackThrusters.BuildFlame(n, 0.22f, speed, thrusterFlameSize, cone, mouth, core, tail);
+            fx.emission = fx.flame.emission;
+            fx.main = fx.flame.main;
+            fx.smoke = JetpackThrusters.BuildSmoke(fx.flame.transform, SmokeSpace(), 45f, 1.1f, 0.2f, smoke, speed, cone, mouth);
+            if (fx.smoke != null) fx.smokeEmission = fx.smoke.emission;
+            _thrusterFx.Add(fx);
+        }
+        _smokeSpace = SmokeSpace();
+    }
+
+    void UpdateThrusterFx(float dt)
+    {
+        if (_thrusterFx.Count == 0) return;
+        // Smoke lives in the planet's frame (the planets move on rails); re-point it when the anchor changes.
+        Transform want = SmokeSpace();
+        if (want != _smokeSpace)
+        {
+            _smokeSpace = want;
+            for (int i = 0; i < _thrusterFx.Count; i++)
+            {
+                var fx = _thrusterFx[i];
+                if (fx.smoke == null) continue;
+                var m = fx.smoke.main;
+                m.customSimulationSpace = want;
+                fx.smoke.Clear();
+            }
+        }
+
+        Vector3 dirLocal = _thrustLocalVis.sqrMagnitude > 1e-4f ? _thrustLocalVis.normalized : Vector3.zero;
+        float target = _thrustLevelVis;
+        float peak = 0f;
+        for (int i = 0; i < _thrusterFx.Count; i++)
+        {
+            var fx = _thrusterFx[i];
+            if (fx.nozzle == null || fx.flame == null) continue;
+            // Exhaust points the opposite way to the thrust, in the rover's frame.
+            if (dirLocal != Vector3.zero)
+                fx.nozzle.rotation = transform.rotation * Quaternion.LookRotation(-dirLocal, Vector3.up);
+            float k = 1f - Mathf.Exp(-dt * (target > fx.level ? 18f : 9f));
+            fx.level = Mathf.Lerp(fx.level, target, k);
+            if (fx.level < 0.005f) fx.level = 0f;
+            fx.emission.rateOverTime = fx.level * 1800f;
+            fx.main.startSpeed = 11f * (0.5f + 0.5f * fx.level);
+            if (fx.smoke != null) fx.smokeEmission.rateOverTime = fx.level * 45f;
+            if (fx.level > peak) peak = fx.level;
+        }
+
+        // One glow light between the pods (the jetpack's recipe: point light + grass marker).
+        if (_thrustGlow == null)
+        {
+            var go = new GameObject("~thruster glow");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, 0.75f, -0.15f);
+            _thrustGlow = go.AddComponent<Light>();
+            _thrustGlow.type = LightType.Point;
+            _thrustGlow.shadows = LightShadows.None;
+            _thrustGlow.color = new Color(1f, 0.55f, 0.15f);
+            _thrustGlow.range = 9f;
+            _thrustGlow.intensity = 0f;
+            _thrustGlow.enabled = false;
+            _thrustGlowMarker = go.AddComponent<GrassPointLight>();
+            _thrustGlowMarker.grassStrength = 0.6f;
+        }
+        _thrustGlowLevel = Mathf.Lerp(_thrustGlowLevel, peak, 1f - Mathf.Exp(-dt * (peak > _thrustGlowLevel ? 18f : 9f)));
+        if (_thrustGlowLevel < 0.01f)
+        {
+            _thrustGlowLevel = 0f;
+            if (_thrustGlow.enabled) _thrustGlow.enabled = false;
+            return;
+        }
+        float flick = 1f + 0.15f * (Mathf.PerlinNoise(Time.time * 23f, 0.37f) * 2f - 1f);
+        _thrustGlow.intensity = 2.6f * _thrustGlowLevel * flick;
+        if (!_thrustGlow.enabled) _thrustGlow.enabled = true;
     }
 
     // ── Engine hum (procedural, no clip needed) ─────────────────────────────
