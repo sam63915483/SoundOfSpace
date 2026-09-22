@@ -177,6 +177,20 @@ public class LensFlareRegistry : MonoBehaviour
     // Additive UI shader name (LensFlareAdditive.shader).
     const string kAdditiveShaderName = "UI/LensFlareAdditive";
 
+    // ── Blend mode (2026-09-22, Sam's call) ──────────────────────────────
+    // Builds NEVER rendered the additive version until 2026-09-20: the shader
+    // is only ever reached through Shader.Find, so the player stripped it,
+    // EnsureAdditiveMaterial logged its warning and every flare layer fell
+    // back to the default UI material — plain alpha blending. That soft,
+    // alpha-blended flare is the one Sam has judged every build by and likes.
+    // The football build fix (711431f8) put UI/LensFlareAdditive into Always
+    // Included Shaders, so the next full build suddenly drew the additive
+    // glow the Editor always had — the one Sam calls bad. This switch makes
+    // the alpha look THE look, identical in the Editor and in builds.
+    // static readonly (not const) so the early-return below is not flagged
+    // as unreachable code — the warning baseline is zero.
+    static readonly bool kAdditiveBlend = false;
+
     // ─── Runtime state ───────────────────────────────────────────────────
     Canvas _canvas;
     Sprite _haloSprite;
@@ -274,6 +288,7 @@ public class LensFlareRegistry : MonoBehaviour
     // additively over the sky instead of alpha-blending as flat discs.
     void EnsureAdditiveMaterial()
     {
+        if (!kAdditiveBlend) return;    // alpha-blended layers: the default UI material (see kAdditiveBlend)
         if (_additiveMat != null) return;
         Shader sh = Shader.Find(kAdditiveShaderName);
         if (sh == null)

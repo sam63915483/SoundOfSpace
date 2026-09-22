@@ -164,8 +164,19 @@ public class RoverController : MonoBehaviour
     bool _settled;
     Vector3 _spawnLocal;
     bool _spawnLocalValid;
+    CelestialBody _spawnAnchor;      // the body _spawnLocal is measured on (fixed for the whole settle)
     float _settleDeadline;
     int _boardFrame = -1;
+    // Planet-local pose from the last physics step: the save loader teleports
+    // every planet to its saved orbit position one frame after the scene
+    // starts (SaveLoadRunner), and a warp does the same — a settled rover
+    // would be left floating where the village USED to be. An impossible
+    // one-step jump in planet-local position is how we know, and the last
+    // local pose is where we put it back.
+    Vector3 _lastLocalPos;
+    Quaternion _lastLocalRot;
+    bool _hasLastLocal;
+    const float kTeleportJump = 25f;   // metres per step; driving moves < 0.5
     // Camera
     float _lookYaw, _lookPitch;
     bool _thirdPerson;
@@ -221,8 +232,39 @@ public class RoverController : MonoBehaviour
     void RememberSpawnLocal()
     {
         if (_anchor == null) return;
+        _spawnAnchor = _anchor;
         _spawnLocal = _anchor.transform.InverseTransformPoint(_rb.position);
         _spawnLocalValid = true;
+    }
+
+    void RecordLocalPose()
+    {
+        if (_anchor == null) { _hasLastLocal = false; return; }
+        _lastLocalPos = _anchor.transform.InverseTransformPoint(_rb.position);
+        _lastLocalRot = Quaternion.Inverse(_anchor.transform.rotation) * _rb.rotation;
+        _hasLastLocal = true;
+    }
+
+    /// The planet moved under us in one step: put the rover back at its last
+    /// planet-local pose on that same planet and re-settle onto the terrain.
+    void RelocateToLastLocal()
+    {
+        var a = _anchor;
+        Vector3 pos = a.transform.TransformPoint(_lastLocalPos);
+        Quaternion rot = a.transform.rotation * _lastLocalRot;
+        _rb.isKinematic = true;
+        _rb.position = pos;
+        _rb.rotation = rot;
+        transform.SetPositionAndRotation(pos, rot);
+        _spawnAnchor = a;
+        _spawnLocal = _lastLocalPos;
+        _spawnLocalValid = true;
+        _settled = false;
+        _hasLastLocal = false;
+        _settleDeadline = Time.time + 3f;
+        Physics.SyncTransforms();
+        Debug.Log("[Rover] " + a.name + " moved under me (save load / warp) — re-seated at my planet-local spot");
+        Settle(false);
     }
 
     void OnDestroy()
@@ -421,6 +463,20 @@ public class RoverController : MonoBehaviour
     void FixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
+
+        // Planet teleport check FIRST, against last step's anchor — after the
+        // planet has jumped away, re-electing would pick whatever body is now
+        // nearest to the stranded rover and lose the planet we belong to.
+        if (_settled && _anchor != null && _hasLastLocal)
+        {
+            Vector3 localNow = _anchor.transform.InverseTransformPoint(_rb.position);
+            if ((localNow - _lastLocalPos).sqrMagnitude > kTeleportJump * kTeleportJump)
+            {
+                RelocateToLastLocal();
+                return;
+            }
+        }
+
         ElectAnchor();
         UpdateGravityFrame();
 
@@ -429,9 +485,10 @@ public class RoverController : MonoBehaviour
             // Not on real terrain yet (the planet mesh is generated at runtime
             // and can sit metres off the editor's placeholder sphere). Ride the
             // planet kinematically at the authored planet-local spot and drop
-            // onto the ground the moment a cast finds it.
+            // onto the ground the moment a cast finds it. The spot is measured
+            // on _spawnAnchor, never on whatever ElectAnchor says this step.
             if (!_spawnLocalValid) RememberSpawnLocal();
-            else if (_anchor != null) _rb.position = _anchor.transform.TransformPoint(_spawnLocal);
+            else if (_spawnAnchor != null) _rb.position = _spawnAnchor.transform.TransformPoint(_spawnLocal);
             Settle(Time.time > _settleDeadline);
             return;
         }
@@ -561,6 +618,8 @@ public class RoverController : MonoBehaviour
             }
             _charge = 0f;
         }
+
+        RecordLocalPose();
     }
 
     bool CastWheel(Vector3 origin, Vector3 dir, float radius, float maxDist, out RaycastHit best)
@@ -644,6 +703,7 @@ public class RoverController : MonoBehaviour
             _anchorGen = null;
             _anchorOceanKnown = false;
             _anchorOceanR = 0f;
+            _hasLastLocal = false;   // local pose was measured on the old body
         }
         if (_anchor != null && !_anchorOceanKnown)
         {
@@ -677,7 +737,8 @@ public class RoverController : MonoBehaviour
     void Settle(bool force)
     {
         if (_settled) return;
-        Vector3 up = _anchor != null ? (_rb.position - _anchor.Position).normalized : transform.up;
+        var body = _spawnAnchor != null ? _spawnAnchor : _anchor;
+        Vector3 up = body != null ? (_rb.position - body.Position).normalized : transform.up;
         float clearance = restLength + wheelRadius + 0.35f;
         bool ok = false;
         Vector3 origin = _rb.position + up * 60f;
@@ -701,12 +762,14 @@ public class RoverController : MonoBehaviour
         _rb.rotation = Quaternion.LookRotation(fwd.normalized, up);
         transform.SetPositionAndRotation(_rb.position, _rb.rotation);
         _rb.isKinematic = false;
-        _rb.velocity = _anchor != null ? _anchor.velocity : Vector3.zero;
+        _rb.velocity = body != null ? body.velocity : Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
         for (int i = 0; i < WheelCount; i++) _length[i] = restLength;
         _settled = true;
         Physics.SyncTransforms();
-        Debug.Log($"[Rover] settled on {(_anchor != null ? _anchor.name : "nothing")} (terrain {(ok ? "found" : "NOT found — released anyway")})");
+        if (body != null) _anchor = body;
+        RecordLocalPose();
+        Debug.Log($"[Rover] settled on {(body != null ? body.name : "nothing")} (terrain {(ok ? "found" : "NOT found — released anyway")})");
     }
 
     /// Dev cheat (Home): bring the rover to 6 m in front of the player and re-settle it.
@@ -724,6 +787,7 @@ public class RoverController : MonoBehaviour
         transform.SetPositionAndRotation(pos, _rb.rotation);
         RememberSpawnLocal();
         _settled = false;
+        _hasLastLocal = false;
         _settleDeadline = Time.time + 3f;
         Physics.SyncTransforms();
         Settle(false);

@@ -60,6 +60,11 @@ can be regenerated at any time.
   speed + throttle. No asset needed.
 - Registered with `EndlessManager` (floating origin). Not saved — a reload puts
   it back at its scene spot.
+- **Survives save loads / warps**: the save loader teleports every planet to
+  its saved orbit position one frame after the scene starts. The rover keeps
+  its last planet-local pose each step; an impossible one-step jump in that
+  pose means the planet moved, and it re-seats itself at the same local spot
+  and re-settles (`[Rover] <planet> moved under me` in the log).
 
 ## Tuning knobs worth knowing
 
