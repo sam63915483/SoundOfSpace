@@ -1789,6 +1789,9 @@ public class PlayerController : GravityObject
 	void UpdateSpaceGate()
 	{
 		if (referenceBody == null) { _playerInSpace = true; return; }   // deep space
+		// A zero-g pocket (the cavern at the moon's core) counts as space: the
+		// up-lock releases and you float, exactly as past the atmosphere line.
+		if (ZeroGZone.All.Count > 0 && ZeroGZone.Contains(rb.position)) { _playerInSpace = true; return; }
 
 		float dist = Vector3.Distance(rb.position, referenceBody.Position);
 		float atmo = AtmosphereBounds.Radius(referenceBody);

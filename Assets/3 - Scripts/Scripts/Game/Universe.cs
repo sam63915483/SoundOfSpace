@@ -39,6 +39,8 @@ public static class Universe {
     // is surfaceGravity, since CelestialBody.RecalculateMass defines
     // mass = surfaceGravity * radius² / G).
     public static Vector3 GravityAcceleration (Vector3 point, CelestialBody body) {
+        // Zero-g pockets (the cavern at the centre of the moon): no pull at all.
+        if (ZeroGZone.All.Count > 0 && ZeroGZone.Contains (point)) return Vector3.zero;
         Vector3 offset = body.Position - point;
         float sqrDst = offset.sqrMagnitude;
         // Dead centre: direction is undefined and the true net pull is zero anyway.

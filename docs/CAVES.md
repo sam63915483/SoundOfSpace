@@ -99,6 +99,16 @@ anywhere. Network: slim tunnels (r 2.0-2.6) 12-20 m long between caverns
 7-11 m (some 12-14 m, shrunk near the core), growth far more patient. Crystal
 lights: every 2nd, range 14, pulsing 1.0-1.9, emission ×1.4.
 
+**Round 8 (2026-09-23) — ONE NETWORK FOR THE WHOLE MOON.** `Cave_Moon` is a
+single prefab rooted at the moon's centre: three crater mouths, one maze grown
+in moon space (`GrowMoon`: slim 2-2.6 m legs 12-20 m long that steadily
+descend, a cavern at most junctions, loops, ≥ 2 tunnels into a 13 m zero-g
+core cavern), the solid built against a spherical terrain (`SphereGround`,
+radius per direction from the LOD0 preview) with several `Mouth`es, split
+into octant meshes. `ZeroGZone` at the core: `Universe.GravityAcceleration`
+returns zero inside and `PlayerController.UpdateSpaceGate` counts it as space
+(free-float). Crystals in caverns only, brighter glow.
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

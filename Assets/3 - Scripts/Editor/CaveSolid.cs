@@ -160,9 +160,18 @@ public static class CaveSolid
 
     /// The terrain under the cave as a heightfield in cave-local (x, z), y = height.
     /// Flat (all zero) when nothing is sampled — the legacy Humble Abode cave.
-    public sealed class Ground
+    /// The terrain, as a signed height: Height(p) > 0 above the surface,
+    /// < 0 below it. Two shapes: a heightmap over the mouth's local (x, z)
+    /// (single-mouth caves, the legacy planet cave) and a whole sphere with a
+    /// radius per direction (the moon: one network, several mouths).
+    public abstract class Ground
     {
-        public static readonly Ground Flat = new Ground();
+        public abstract float Height(Vector3 p);
+        public static readonly Ground Flat = new HeightmapGround();
+    }
+
+    public sealed class HeightmapGround : Ground
+    {
         public float[] h;           // row-major, (nz+1) rows of (nx+1)
         public int nx, nz;
         public float cell = 0.5f;
@@ -179,6 +188,42 @@ public static class CaveSolid
             float c = h[(iz + 1) * (nx + 1) + ix], d = h[(iz + 1) * (nx + 1) + ix + 1];
             return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), tz);
         }
+
+        public override float Height(Vector3 p) => p.y - Sample(p.x, p.z);
+    }
+
+    public sealed class SphereGround : Ground
+    {
+        public Vector3 centre;
+        public Func<Vector3, float> radiusOfDirection;     // terrain radius along a unit direction
+        public override float Height(Vector3 p)
+        {
+            Vector3 d = p - centre;
+            float m = d.magnitude;
+            if (m < 1e-4f) return -radiusOfDirection(Vector3.up);
+            return m - radiusOfDirection(d / m);
+        }
+    }
+
+    /// A way in. `pos`/`rot` are the mouth's frame in cave space (its +Y is
+    /// the surface normal there, +Z the way the ramp heads). Build fills the
+    /// hole it needs.
+    public sealed class Mouth
+    {
+        public Vector3 pos;
+        public Quaternion rot = Quaternion.identity;
+        public Vector3 holeCentre;      // cave space, on the surface
+        public float holeRadius = 5f;
+        public Vector3 Axis => rot * Vector3.up;
+        public Matrix4x4 ToMouth => Matrix4x4.TRS(pos, rot, Vector3.one).inverse;
+        public float SkirtRadius => holeRadius + SkirtExtra;
+        public float Radial(Vector3 p)
+        {
+            Vector3 q = p - holeCentre;
+            Vector3 ax = Axis;
+            q -= ax * Vector3.Dot(q, ax);
+            return q.magnitude;
+        }
     }
 
     /// One cave to build.
@@ -191,8 +236,14 @@ public static class CaveSolid
         /// Radius of the body the cave is dug into, measured at the mouth. 0 = a
         /// flat world (up is +Y everywhere). Otherwise up is radial about (0,-R,0).
         public float bodyRadius;
-        /// Filled by Build: the TerrainHole cylinder that covers every point
-        /// where the void meets the terrain.
+        /// The body's centre in cave space. Unset = (0, -bodyRadius, 0), i.e. the
+        /// cave's origin sits on the surface (single-mouth caves). The whole-moon
+        /// network puts its origin AT the centre.
+        public Vector3 centre;
+        public bool centreSet;
+        /// The ways in. Empty = one mouth at the origin (legacy planet cave).
+        public List<Mouth> mouths = new List<Mouth>();
+        /// Filled by Build from mouths[0] (legacy readers).
         public Vector3 holeCentre;
         public float holeRadius;
     }
@@ -200,6 +251,10 @@ public static class CaveSolid
     public sealed class Result
     {
         public Mesh mesh;
+        /// The faceted cave split by octant about the body centre (each a
+        /// sensible asset size, and frustum culling gets something to cull).
+        /// `mesh` is pieces[0].
+        public List<Mesh> pieces = new List<Mesh>();
         /// The sinkhole and the first metres of ramp as a separate SMOOTH mesh
         /// (cave-local), rendered with the moon's own material by the installer.
         public Mesh mouthSkin;
@@ -280,8 +335,10 @@ public static class CaveSolid
             L.rooms[i] = r;
         }
 
+        if (L.mouths.Count == 0) L.mouths.Add(new Mouth { pos = Vector3.zero, rot = Quaternion.identity });
         var ctx = new Ctx(L);
         ctx.ComputeHole();
+        L.holeCentre = L.mouths[0].holeCentre; L.holeRadius = L.mouths[0].holeRadius;
         ctx.PlaceFeatures();
 
         Bounds b = ctx.ComputeBounds();
@@ -428,8 +485,9 @@ public static class CaveSolid
             for (int k = 0; k < 3 && skin; k++)
             {
                 Vector3 p = v[kept[i + k]];
-                bool nearSurface = p.y > ctx.GroundAt(p) - 2.5f;
-                bool ramp = path[kept[i + k]] <= MouthSkinPathMetres && p.y > ctx.GroundAt(p) - 9f;
+                float hp = ctx.H(p);
+                bool nearSurface = hp > -2.5f;
+                bool ramp = path[kept[i + k]] <= MouthSkinPathMetres && hp > -9f;
                 if (!nearSurface && !ramp) skin = false;
             }
             (skin ? skinTris : caveTris).AddRange(new[] { kept[i], kept[i + 1], kept[i + 2] });
@@ -438,9 +496,25 @@ public static class CaveSolid
         kept = caveTris.ToArray();
         R.trisTrimmed = kept.Length / 3;
 
-        var final = Facet(v, colours, kept);
-        final.name = "Cave_Solid";
-        R.mesh = final;
+        // Octants about the body centre → separate meshes.
+        var byOct = new List<int>[8];
+        for (int o = 0; o < 8; o++) byOct[o] = new List<int>();
+        Vector3 bc = ctx.Centre;
+        for (int i = 0; i < kept.Length; i += 3)
+        {
+            Vector3 c = (v[kept[i]] + v[kept[i + 1]] + v[kept[i + 2]]) / 3f - bc;
+            int o = (c.x >= 0 ? 1 : 0) | (c.y >= 0 ? 2 : 0) | (c.z >= 0 ? 4 : 0);
+            byOct[o].Add(kept[i]); byOct[o].Add(kept[i + 1]); byOct[o].Add(kept[i + 2]);
+        }
+        for (int o = 0; o < 8; o++)
+        {
+            if (byOct[o].Count == 0) continue;
+            var m = Facet(v, colours, byOct[o].ToArray());
+            m.name = "Cave_Solid_" + o;
+            R.pieces.Add(m);
+        }
+        if (R.pieces.Count == 0) R.pieces.Add(Facet(v, colours, kept));
+        R.mesh = R.pieces[0];
         R.seconds = sw.Elapsed.TotalSeconds;
         R.ok = true;
         return R;
@@ -460,11 +534,11 @@ public static class CaveSolid
         readonly Ground ground;
         readonly float R;                 // body radius (0 = flat)
         readonly Vector3 centre;          // body centre in cave space
+        readonly List<Mouth> mouths;
         readonly List<Feature> interior = new List<Feature>();
         readonly List<Feature> mouth = new List<Feature>();
         readonly System.Random rng;
-        float skirtR;
-        float moundGround;                // terrain height under the mound centre
+        public Vector3 Centre => centre;
 
         public Vector3 origin; public int nx, ny, nz;
         public float[] field, voidGrid;
@@ -522,7 +596,8 @@ public static class CaveSolid
             L = layout; st = layout.style; segs = layout.segments; rooms = layout.rooms;
             ground = layout.ground ?? Ground.Flat;
             R = layout.bodyRadius;
-            centre = new Vector3(0f, -R, 0f);
+            centre = layout.centreSet ? layout.centre : new Vector3(0f, -R, 0f);
+            mouths = layout.mouths;
             rng = new System.Random(st.seed);
         }
 
@@ -539,7 +614,19 @@ public static class CaveSolid
         /// Metres below the mouth-level sphere (positive = deeper).
         float Depth(Vector3 p) => R <= 0f ? -p.y : R - (p - centre).magnitude;
 
-        float G(Vector3 p) => ground.Sample(p.x, p.z);
+        /// Signed height above the terrain surface.
+        public float H(Vector3 p) => ground.Height(p);
+
+        Mouth NearestMouth(Vector3 p, out float radial)
+        {
+            Mouth best = null; radial = float.MaxValue;
+            for (int i = 0; i < mouths.Count; i++)
+            {
+                float r = mouths[i].Radial(p);
+                if (r < radial) { radial = r; best = mouths[i]; }
+            }
+            return best;
+        }
 
         static void Frame(Vector3 n, Vector3 up, out Vector3 lat, out Vector3 vert)
         {
@@ -677,34 +764,28 @@ public static class CaveSolid
 
         float Bury(Vector3 p)
         {
-            float rXZ = new Vector2(p.x - L.holeCentre.x, p.z - L.holeCentre.z).magnitude;
-            return Mathf.Lerp(BuryInside, BuryOutside, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(L.holeRadius - 0.8f, L.holeRadius + 1.5f, rXZ)));
+            var m = NearestMouth(p, out float rXZ);
+            if (m == null) return BuryOutside;
+            return Mathf.Lerp(BuryInside, BuryOutside, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(m.holeRadius - 0.8f, m.holeRadius + 1.5f, rXZ)));
         }
 
-        bool InSkirtRegion(Vector3 p, float g)
+        bool InSkirtRegion(Vector3 p, float h)
         {
-            float rXZ = new Vector2(p.x - L.holeCentre.x, p.z - L.holeCentre.z).magnitude;
-            if (rXZ > skirtR + 3f) return false;
-            return p.y > g - SlabThickness - 3f && p.y < g + st.moundRadii.y + st.moundCentre.y + 4f;
+            var m = NearestMouth(p, out float rXZ);
+            if (m == null || rXZ > m.SkirtRadius + 3f) return false;
+            return h > -SlabThickness - 3f && h < 4f;
         }
 
-        float Slab(Vector3 p, float g, float bury)
+        float Slab(Vector3 p, float h, float bury)
         {
-            float rXZ = new Vector2(p.x - L.holeCentre.x, p.z - L.holeCentre.z).magnitude;
-            float top = p.y - (g - bury);
-            float bottom = (g - SlabThickness) - p.y;
-            float d = Mathf.Max(Mathf.Max(top, bottom), rXZ - skirtR);
+            var m = NearestMouth(p, out float rXZ);
+            if (m == null) return float.MaxValue;
+            float top = h + bury;
+            float bottom = -SlabThickness - h;
+            float d = Mathf.Max(Mathf.Max(top, bottom), rXZ - m.SkirtRadius);
             // A little roughness only where the slab is the ground you walk on.
-            if (rXZ < L.holeRadius + 0.5f) d += Noise(p) * 0.15f;
+            if (rXZ < m.holeRadius + 0.5f) d += Noise(p) * 0.15f;
             return d;
-        }
-
-        float Mound(Vector3 p)
-        {
-            if (st.moundRadii.x <= 0f) return float.MaxValue;     // no outcrop: a flush sinkhole
-            Vector3 c = new Vector3(st.moundCentre.x, moundGround + st.moundCentre.y, st.moundCentre.z);
-            float d = SdEllipsoid(p - c, st.moundRadii);
-            return d + Noise(p) * st.noiseAmp * st.moundNoise;
         }
 
         /// Negative inside the ROCK. Also hands back the (noisy) void distance
@@ -712,23 +793,21 @@ public static class CaveSolid
         public float RockField(Vector3 p, out float dVoid)
         {
             float raw = VoidRaw(p, out float fl, out float upn);
-            float g = G(p);
-            bool skirt = InSkirtRegion(p, g);
+            float hgt = H(p);
+            bool skirt = InSkirtRegion(p, hgt);
 
             // Far from every passage AND outside the mouth region: nothing here.
             if (raw > 7f && !skirt) { dVoid = raw; return raw; }
 
             dVoid = raw + WallNoise(p, fl, upn);
             float bury = Bury(p);
-            float hullClipped = Mathf.Max(Hull(p), p.y - (g - bury));
+            float hullClipped = Mathf.Max(Hull(p), hgt + bury);
             float rock = Mathf.Max(hullClipped, -dVoid);
 
             if (skirt)
             {
-                float slab = Mathf.Max(Slab(p, g, bury), -dVoid);
+                float slab = Mathf.Max(Slab(p, hgt, bury), -dVoid);
                 rock = SMin(rock, slab, 1.5f);
-                float mound = Mound(p);
-                if (mound != float.MaxValue) rock = SMin(rock, Mathf.Max(mound, -dVoid), 2.0f);
                 for (int i = 0; i < mouth.Count; i++) rock = Mathf.Min(rock, FeatureField(p, mouth[i]));
             }
             if (raw < 5f)
@@ -814,7 +893,28 @@ public static class CaveSolid
         /// skirt radius and the terrain height under the outcrop.
         public void ComputeHole()
         {
-            var pts = new List<Vector2>();
+            // Every point where the void straddles the terrain, handed to the
+            // nearest mouth, expressed in that mouth's frame (x, z on the surface).
+            var pts = new List<Vector2>[mouths.Count];
+            for (int i = 0; i < mouths.Count; i++) pts[i] = new List<Vector2>();
+            int MouthFor(Vector3 p)
+            {
+                int best = 0; float bd = float.MaxValue;
+                for (int i = 0; i < mouths.Count; i++) { float d = (mouths[i].pos - p).sqrMagnitude; if (d < bd) { bd = d; best = i; } }
+                return best;
+            }
+            void AddRing(Vector3 c, Vector3 lat, Vector3 vert, float rw, float rh)
+            {
+                int mi = MouthFor(c);
+                var toM = mouths[mi].ToMouth;
+                for (int k = 0; k < 24; k++)
+                {
+                    float a = k / 24f * Mathf.PI * 2f;
+                    Vector3 bp = c + lat * (rw * Mathf.Cos(a) * 1.15f) + vert * (rh * Mathf.Sin(a) * 1.15f);
+                    Vector3 pm = toM.MultiplyPoint3x4(bp);
+                    pts[mi].Add(new Vector2(pm.x, pm.z));
+                }
+            }
             foreach (var s in segs)
             {
                 float len = (s.b - s.a).magnitude;
@@ -824,58 +924,50 @@ public static class CaveSolid
                     float t = i / (float)steps;
                     Vector3 c = Vector3.Lerp(s.a, s.b, t);
                     float r = Mathf.Lerp(s.ra, s.rb, t), w = Mathf.Lerp(s.wa, s.wb, t), h = Mathf.Lerp(s.ha, s.hb, t);
-                    Vector3 n = (s.b - s.a).normalized;
-                    Frame(n, Up(c), out Vector3 lat, out Vector3 vert);
-                    float g = G(c);
+                    Frame((s.b - s.a).normalized, Up(c), out Vector3 lat, out Vector3 vert);
                     // Noise can push the roof ~1 m out, so the crossing band is padded.
-                    float top = c.y + h * r + 1.0f, floor = c.y - h * r * FloorSquash - 0.6f;
-                    if (g < floor || g > top) continue;          // wholly above or below the ground here
-                    for (int k = 0; k < 24; k++)
-                    {
-                        float a = k / 24f * Mathf.PI * 2f;
-                        Vector3 bp = c + lat * (w * r * Mathf.Cos(a) * 1.15f) + vert * (h * r * Mathf.Sin(a) * 1.15f);
-                        pts.Add(new Vector2(bp.x, bp.z));
-                    }
+                    Vector3 top = c + vert * (h * r + 1.0f), floor = c - vert * (h * r * FloorSquash + 0.6f);
+                    if (H(top) < 0f || H(floor) > 0f) continue;      // wholly below or above the ground here
+                    AddRing(c, lat, vert, w * r, h * r);
                 }
             }
             foreach (var room in rooms)
             {
-                float g = G(room.centre);
-                if (room.centre.y + room.h * room.radius + 0.5f < g) continue;
-                for (int k = 0; k < 24; k++)
-                {
-                    float a = k / 24f * Mathf.PI * 2f;
-                    pts.Add(new Vector2(room.centre.x + Mathf.Cos(a) * room.w * room.radius * 1.15f,
-                                        room.centre.z + Mathf.Sin(a) * room.w * room.radius * 1.15f));
-                }
+                Vector3 up = Up(room.centre);
+                Vector3 top = room.centre + up * (room.h * room.radius + 1f);
+                if (H(top) < 0f) continue;
+                Frame(Vector3.forward, up, out Vector3 lat, out _);
+                Vector3 lat2 = Vector3.Cross(up, lat).normalized;
+                AddRing(room.centre, lat, lat2, room.w * room.radius, room.w * room.radius);
             }
 
-            if (pts.Count == 0)
+            for (int mi = 0; mi < mouths.Count; mi++)
             {
-                L.holeCentre = Vector3.zero; L.holeRadius = 5f;
-            }
-            else
-            {
-                // Smallest enclosing circle, the cheap way: bounding-box centre,
-                // then a few passes pulling toward the farthest point.
-                Vector2 mn = pts[0], mx = pts[0];
-                foreach (var q in pts) { mn = Vector2.Min(mn, q); mx = Vector2.Max(mx, q); }
-                Vector2 cc = (mn + mx) * 0.5f;
-                float rad = 0f;
-                for (int pass = 0; pass < 40; pass++)
+                var m = mouths[mi];
+                var list = pts[mi];
+                Vector2 cc = Vector2.zero; float rad = 4f;
+                if (list.Count > 0)
                 {
-                    rad = 0f; Vector2 far = cc;
-                    foreach (var q in pts) { float d = (q - cc).magnitude; if (d > rad) { rad = d; far = q; } }
-                    float second = 0f;
-                    foreach (var q in pts) { float d = (q - far).magnitude; if (d > second) second = d; }
-                    if (second * 0.5f >= rad - 0.05f) break;
-                    cc += (far - cc) * 0.08f;
+                    Vector2 mn = list[0], mx = list[0];
+                    foreach (var q in list) { mn = Vector2.Min(mn, q); mx = Vector2.Max(mx, q); }
+                    cc = (mn + mx) * 0.5f;
+                    for (int pass = 0; pass < 40; pass++)
+                    {
+                        rad = 0f; Vector2 far = cc;
+                        foreach (var q in list) { float d = (q - cc).magnitude; if (d > rad) { rad = d; far = q; } }
+                        float second = 0f;
+                        foreach (var q in list) { float d = (q - far).magnitude; if (d > second) second = d; }
+                        if (second * 0.5f >= rad - 0.05f) break;
+                        cc += (far - cc) * 0.08f;
+                    }
+                    rad += 1.2f;
                 }
-                L.holeCentre = new Vector3(cc.x, 0f, cc.y);
-                L.holeRadius = rad + 1.2f;
+                Vector3 hc = m.pos + m.rot * new Vector3(cc.x, 0f, cc.y);
+                // Sit the hole centre on the terrain surface along the mouth axis.
+                hc -= m.Axis * H(hc);
+                m.holeCentre = hc;
+                m.holeRadius = rad;
             }
-            skirtR = L.holeRadius + SkirtExtra;
-            moundGround = ground.Sample(st.moundCentre.x, st.moundCentre.z);
         }
 
         // ── features ──────────────────────────────────────────────────────
@@ -994,29 +1086,24 @@ public static class CaveSolid
                 float half = hst.h * hst.r;
                 interior.Add(new Feature { kind = FeatureKind.Capsule, a = mid - hst.up * (half * FloorSquash + 1.2f), b = mid + hst.up * (half + 1.5f), ra = Rand(0.5f, 0.95f) });
             }
-            // Mouth boulders: on the terrain around the outcrop, clear of the approach.
-            for (int i = 0; i < st.mouthBoulders * 3 && CountMouth() < st.mouthBoulders; i++)
+            // Mouth boulders: on the terrain around each sinkhole, clear of the way in.
+            foreach (var m in mouths)
             {
-                float ang = Rand(0f, Mathf.PI * 2f);
-                float rad = Rand(L.holeRadius + 1.5f, L.holeRadius + 7.5f);
-                float x = L.holeCentre.x + Mathf.Cos(ang) * rad, z = L.holeCentre.z + Mathf.Sin(ang) * rad;
-                if (Mathf.Abs(x) < 4.5f && z < st.moundCentre.z - 2f) continue;      // the way in
-                float g = ground.Sample(x, z);
-                float r = Rand(0.45f, 1.0f);
-                mouth.Add(new Feature { kind = FeatureKind.Ellipsoid, a = new Vector3(x, g - r * 0.3f, z), scale = new Vector3(r * Rand(0.8f, 1.3f), r * Rand(0.7f, 1.0f), r * Rand(0.8f, 1.3f)), mouth = true });
-            }
-            ReportFeatures();
-            if (st.mouth == MouthKind.Collapse)
-            {
-                // Rubble spilling out of the mouth itself.
-                for (int i = 0; i < 6; i++)
+                int placed = 0;
+                for (int i = 0; i < st.mouthBoulders * 3 && placed < st.mouthBoulders; i++)
                 {
-                    float x = Rand(-3.5f, 3.5f), z = Rand(st.moundCentre.z - st.moundRadii.z - 3f, st.moundCentre.z - st.moundRadii.z + 1f);
-                    float g = ground.Sample(x, z);
-                    float r = Rand(0.5f, 1.1f);
-                    mouth.Add(new Feature { kind = FeatureKind.Ellipsoid, a = new Vector3(x, g - r * 0.35f, z), scale = new Vector3(r * Rand(0.8f, 1.3f), r * 0.8f, r * Rand(0.8f, 1.3f)), mouth = true });
+                    float ang = Rand(0f, Mathf.PI * 2f);
+                    float rad = Rand(m.holeRadius + 1.5f, m.holeRadius + 7.5f);
+                    float x = Mathf.Cos(ang) * rad, z = Mathf.Sin(ang) * rad;
+                    if (Mathf.Abs(x) < 4.5f && z < -2f) continue;      // the way in
+                    Vector3 p0 = m.holeCentre + m.rot * new Vector3(x, 0f, z);
+                    p0 -= m.Axis * H(p0);                                // onto the terrain
+                    float r = Rand(0.45f, 1.0f);
+                    mouth.Add(new Feature { kind = FeatureKind.Ellipsoid, a = p0 - m.Axis * (r * 0.3f), scale = new Vector3(r * Rand(0.8f, 1.3f), r * Rand(0.7f, 1.0f), r * Rand(0.8f, 1.3f)), mouth = true });
+                    placed++;
                 }
             }
+            ReportFeatures();
         }
 
         int CountMouth() => mouth.Count;
@@ -1040,14 +1127,12 @@ public static class CaveSolid
             }
             foreach (var s in segs) { Grow(s.a, s.ra * Mathf.Max(s.wa, s.ha)); Grow(s.b, s.rb * Mathf.Max(s.wb, s.hb)); }
             foreach (var r in rooms) Grow(r.centre, r.radius * Mathf.Max(r.w, r.h));
-            Grow(new Vector3(L.holeCentre.x, moundGround, L.holeCentre.z), skirtR + 1f);
-            if (st.moundRadii.x > 0f)
-                Grow(new Vector3(st.moundCentre.x, moundGround + st.moundCentre.y, st.moundCentre.z), Mathf.Max(st.moundRadii.x, Mathf.Max(st.moundRadii.y, st.moundRadii.z)) + 1f);
+            foreach (var m in mouths) Grow(m.holeCentre, m.SkirtRadius + 1f);
             b.Expand((st.wallThickness + st.noiseAmp + st.cellSize * 3f) * 2f);
             return b;
         }
 
-        // ── grid sampling ─────────────────────────────────────────────────
+        // -- grid sampling ─────────────────────────────────────────────────
 
         float SampleGrid(float[] grid, Vector3 p)
         {
@@ -1076,22 +1161,29 @@ public static class CaveSolid
         /// the hole never shows the hollow moon, from any distance.
         public bool CheckMouth(out string report)
         {
-            int bad = 0; float worst = 0f; float worstAng = 0f;
-            float rr = L.holeRadius + 0.45f;
-            for (int k = 0; k < 72; k++)
+            int bad = 0; float worst = 0f; float worstAng = 0f; int worstMouth = 0;
+            var sb = new System.Text.StringBuilder();
+            for (int mi = 0; mi < mouths.Count; mi++)
             {
-                float a = k * 5f * Mathf.Deg2Rad;
-                float x = L.holeCentre.x + Mathf.Cos(a) * rr, z = L.holeCentre.z + Mathf.Sin(a) * rr;
-                float g = ground.Sample(x, z);
-                float top = float.NegativeInfinity;
-                for (float y = g + 9f; y > g - 5f; y -= st.cellSize * 0.5f)
-                    if (SampleGridTrilinear(field, new Vector3(x, y, z)) < 0f) { top = y; break; }
-                float gap = g - top;
-                if (gap > 0.6f) { bad++; if (gap > worst) { worst = gap; worstAng = k * 5f; } }
+                var m = mouths[mi];
+                float rr = m.holeRadius + 0.45f;
+                Vector3 ax = m.Axis;
+                for (int k = 0; k < 72; k++)
+                {
+                    float a = k * 5f * Mathf.Deg2Rad;
+                    Vector3 basePt = m.holeCentre + m.rot * new Vector3(Mathf.Cos(a) * rr, 0f, Mathf.Sin(a) * rr);
+                    basePt -= ax * H(basePt);                            // on the terrain
+                    float top = float.NegativeInfinity;
+                    for (float t = 9f; t > -5f; t -= st.cellSize * 0.5f)
+                        if (SampleGridTrilinear(field, basePt + ax * t) < 0f) { top = t; break; }
+                    float gap = -top;                                    // metres the rock sits under the terrain
+                    if (gap > 0.6f) { bad++; if (gap > worst) { worst = gap; worstAng = k * 5f; worstMouth = mi; } }
+                }
+                sb.Append($"mouth {mi}: hole r={m.holeRadius:0.00}; ");
             }
             report = bad == 0
-                ? $"hole r={L.holeRadius:0.00} at ({L.holeCentre.x:0.0}, {L.holeCentre.z:0.0}): rock backs the cut edge at all 72 angles"
-                : $"hole r={L.holeRadius:0.00}: {bad}/72 angles have no rock within 0.6 m of the terrain (worst {worst:0.00} m at {worstAng}°)";
+                ? sb + "rock backs every cut edge at all 72 angles"
+                : sb + $"{bad} angle(s) have no rock within 0.6 m of the terrain (worst {worst:0.00} m at {worstAng}Â° on mouth {worstMouth})";
             return bad == 0;
         }
 
@@ -1114,14 +1206,14 @@ public static class CaveSolid
                 if (InsideRoom(c + up * (halfH + 1.6f))) return;
                 // Inside the sinkhole the sky IS the roof: the terrain there is
                 // cut away and the ramp is open by design.
-                float rXZ = new Vector2(c.x - L.holeCentre.x, c.z - L.holeCentre.z).magnitude;
-                if (rXZ < L.holeRadius - 0.5f && c.y > G(c) - 7f) return;
+                var nm = NearestMouth(c, out float rXZ);
+                if (nm != null && rXZ < nm.holeRadius - 0.5f && H(c) > -7f) return;
                 // Deep passages cannot lose their roof: the only thing that
                 // removes rock is the terrain clip, and it stops at the ground.
                 // Down there "no rock within 3.5 m" just means another passage
                 // runs directly overhead — the solid is still closed. Only the
                 // near-surface band is tested.
-                if (c.y + halfH < G(c) - 6f) return;
+                if (H(c) + halfH < -6f) return;
                 // March up from the nominal roof: the wall noise moves the rock
                 // band in and out by up to a metre, so look for rock ANYWHERE in
                 // the next 3.5 m rather than at fixed offsets. A closed solid
@@ -1150,7 +1242,7 @@ public static class CaveSolid
                     Frame((s.b - s.a).normalized, Up(c), out _, out Vector3 vert);
                     // The open-air approach needs no roof while its floor is
                     // still above the ground; once it dips below, it does.
-                    if (s.openAir && (c - vert * (h * r * FloorSquash)).y > G(c)) continue;
+                    if (s.openAir && H(c - vert * (h * r * FloorSquash)) > 0f) continue;
                     Test(c, vert, h * r);
                 }
             }
@@ -1158,7 +1250,7 @@ public static class CaveSolid
             {
                 Vector3 up = Up(room.centre);
                 Vector3 top = room.centre + up * (room.h * room.radius);
-                if (top.y < G(room.centre) - 6f) continue;      // deep: see above
+                if (H(top) < -6f) continue;      // deep: see above
                 bool found = false; float lowest = float.MaxValue;
                 for (float k = 0.3f; k <= 3.5f && !found; k += 0.15f)
                 {
@@ -1208,13 +1300,13 @@ public static class CaveSolid
                         if (rock == float.MaxValue)
                         {
                             // Left the grid: sky if above the terrain, buried otherwise.
-                            blocked = p.y < ground.Sample(p.x, p.z) - 0.5f;
+                            blocked = H(p) < -0.5f;
                             break;
                         }
                         if (rock < 0f) { blocked = true; break; }
-                        float g = ground.Sample(p.x, p.z);
-                        if (p.y < g - 0.5f && SampleGrid(voidGrid, p) > 0.3f) { blocked = true; break; }
-                        if (p.y > g + 2.5f) break;   // clear of the ground: sky
+                        float hp = H(p);
+                        if (hp < -0.5f && SampleGrid(voidGrid, p) > 0.3f) { blocked = true; break; }
+                        if (hp > 2.5f) break;   // clear of the ground: sky
                     }
                     if (!blocked) open++;
                 }
@@ -1253,8 +1345,6 @@ public static class CaveSolid
         /// faces take the moon's steep colour. So the vertex carries
         ///   R = noise (0..1), G = steepness (0..1 over 0..0.3 of 1 - n·up,
         ///   exactly as the moon remaps it), B = 1, A = sky exposure.
-        public float GroundAt(Vector3 p) => G(p);
-
         public Color[] VertexColours(Vector3[] v, Vector3[] n, float[] exposure, float[] path)
         {
             var c = new Color[v.Length];
@@ -1296,7 +1386,8 @@ public static class CaveSolid
             var dist = new float[pts.Count];
             for (int i = 0; i < dist.Length; i++) dist[i] = float.MaxValue;
             if (m == 0) return new float[0];
-            dist[segNode[0].a] = 0f;
+            for (int i = 0; i < m; i++) if (segs[i].openAir) dist[segNode[i].a] = 0f;
+            if (!segs[0].openAir) dist[segNode[0].a] = 0f;
             // Dijkstra, tiny graph.
             var done = new bool[pts.Count];
             for (int it = 0; it < pts.Count; it++)
@@ -1361,7 +1452,7 @@ public static class CaveSolid
                 for (int k = 0; k < 3 && buried; k++)
                 {
                     Vector3 p = v[t[i + k]];
-                    buried = p.y < ground.Sample(p.x, p.z) - 1.0f;
+                    buried = H(p) < -1.0f;
                 }
                 bool far = buried && SampleGridTrilinear(voidGrid, c) > farVoid;
                 if (far) continue;
@@ -1385,7 +1476,7 @@ public static class CaveSolid
                 int a = (int)(kv.Key >> 32), b = (int)(kv.Key & 0xFFFFFFFF);
                 foreach (int vi in new[] { a, b })
                 {
-                    float depth = ground.Sample(v[vi].x, v[vi].z) - v[vi].y;
+                    float depth = -H(v[vi]);
                     if (depth < shallowest) { shallowest = depth; shallowestAt = v[vi]; }
                 }
             }
