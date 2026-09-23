@@ -338,6 +338,24 @@ Sells the guitar with a choice panel.
 > `docs/VAULTED_SYSTEMS.md`. Read the rest of this section as "how it works when
 > the flag is true".
 
+> **🕷 LIVE 2026-09-23 — CAVE SPIDERS (`FeatureVault.CaveSpiders = true`), separate from the vaulted aliens.**
+> ROUND 3: 3 GIANTS (×6) live only in the zero-g core cavern (never above 34 m); spiders don't physically
+> touch the player (`Physics.IgnoreCollision` per pair, re-applied each second — bullets/blades still hit);
+> the pistol skips its long wound FOUNTAIN on spiders (short splash only); body turn rate capped + no
+> floor↔wall flip-back for 0.6 s (the wall spin).
+> `Combat/CaveSpider.cs` + `World/CaveSpiderSpawner.cs` (on the `Cave_Moon` prefab, reads its `CaveVolume`
+> capsules). DEPTH RULES: nothing in the top level (< 11 m below the surface); spiders never climb above
+> 9.5 m and drop a chase when the player gets back above 11 m; below 12.5 m they get more numerous and
+> bigger (×0.7 → ×3 at 28 m+). ~30 live while a player is within 150 m of the moon; dead ones return after
+> 45 s; nothing saved. Noticing is PROXIMITY (5.5 m × size, ×1.8 sprinting, needs a clear line), not a
+> view cone. Each spider has a lane (floor / wall / roof): wall + roof runners run up the tunnel sides and
+> along the ceiling and pounce when close; floor spiders never leap at a grounded player; a floating player
+> is leapt at from 12 m. Pose is kept MOON-LOCAL and interpolated in Update (writing world poses under the
+> orbiting moon was the jitter). Damage in via `IDamageable` (pistol / axe / blade unchanged); bites via
+> `ResourceManager.TakeDamage`. NOT in `EnemyController.ActiveEnemies`. Pistol shots call
+> `CaveSpider.AlertNearby`. Prefabs: `Tools ▸ Cave ▸ Build Cave Spiders` → `Assets/1 - samsPrefabs/CaveSpiders/`.
+> Test key `\` (Editor/dev builds) drops a spider where you look. Co-op: each machine runs its own spiders.
+
 `EnemyController` (per-enemy) + `EnemySpawner` (singleton) + `EnemyHealthBar` UI. Damage sources:
 - `AxeController.ApplyHit(EnemyController, Vector3)` — melee, 34 dmg, 3 hits to kill.
 - `PistolController.TriggerShot()` — hitscan, 50 dmg, 2 shots to kill.

@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 8918494395427779853}
   - component: {fileID: 8993707172702250938}
   - component: {fileID: 508353079744918815}
+  - component: {fileID: 4137966113058409004}
   m_Layer: 0
   m_Name: Cave_Moon
   m_TagString: Untagged
@@ -960,6 +961,34 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   template: {fileID: 2100000, guid: faeb294f9cd3e7a4db8670c401b14d51, type: 2}
+--- !u!114 &4137966113058409004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 204948713141275449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66732596d5d854248bcbe881fdd6037c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spiderPrefabs:
+  - {fileID: 5767775795273699319, guid: d60eca2ef612f8f40abf5d35ca1b1498, type: 3}
+  - {fileID: 5188757748259655197, guid: 8756be36cef83dc418e9c543b1006c50, type: 3}
+  - {fileID: 7806356358817853970, guid: 44f7a37e3c788be47935a937da1ae51c, type: 3}
+  population: 30
+  activeRange: 150
+  minSpawnDistance: 14
+  respawnDelay: 45
+  spawnsPerTick: 4
+  topLevelDepth: 11
+  spiderCeilingDepth: 9.5
+  spawnMinDepth: 12.5
+  fullDepth: 28
+  shallowScale: 0.7
+  deepScale: 3
+  deepDensityMult: 6
 --- !u!1 &397458242226824809
 GameObject:
   m_ObjectHideFlags: 0

@@ -359,6 +359,13 @@ Note the ocean will still pop on/off if you stand exactly in the mouth looking
 out at the sea. Set `suppressOcean = false` on the CaveVolume if you ever *want*
 a flooded cave.
 
+## Spiders (2026-09-23)
+
+The moon network is inhabited: `CaveSpiderSpawner` on `Cave_Moon` lays out hostile
+spiders on floors, walls and roofs using this prefab's own `CaveVolume` capsules. Re-running
+the moon installer keeps the component (it patches the prefab in place). Details and knobs:
+`docs/CURRENT_STATE_AUDIT.md` §13 and the header of `Combat/CaveSpider.cs`.
+
 ## Known limits
 
 - **One mouth.** A second entrance means a second `TerrainHole` marker and a

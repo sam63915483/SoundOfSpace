@@ -1108,6 +1108,15 @@ public class PlayerController : GravityObject
 
 	void HandleMovement()
 	{
+		ApplyLook();
+		HandleMovementBody();
+	}
+
+	/// Mouse / stick look → camera pitch + body yaw (and, free-floating, body
+	/// pitch + roll). Split out of HandleMovement so debug noclip can keep the
+	/// look without any of the walking / gravity / jetpack physics.
+	void ApplyLook()
+	{
 		if (!debug_playerFrozen && Time.timeScale > 0)
 		{
 			if (!CameraBorrowed) cam.transform.localEulerAngles = Vector3.right * smoothPitch;
@@ -1157,6 +1166,10 @@ public class PlayerController : GravityObject
 			_freePitchAppliedToTransform = smoothFreePitch;
 			_freeRollAppliedToTransform  = smoothFreeRoll;
 		}
+	}
+
+	void HandleMovementBody()
+	{
 
 		// Dialogue used to RETURN here, skipping the rest of the tick (ground
 		// stick, slope projection, wall clamps). The body was left to raw
@@ -1936,6 +1949,8 @@ public class PlayerController : GravityObject
 			return;
 		}
 		_riderSmoothInit = false;
+
+		if (Noclip) { NoclipFixedTick(); return; }
 
 		UpdateSpaceGate();
 
@@ -2722,6 +2737,93 @@ public class PlayerController : GravityObject
 		// discards it — a visible wobble and the seed of the next tick's tilt.
 		transform.localRotation = Quaternion.Slerp(_riderPrevLocalRot, _riderCurrLocalRot, t);
 	}
+
+	// ── Debug noclip (backtick menu) ─────────────────────────────────────────
+	// Fly anywhere, through anything: the body turns kinematic (so terrain, rock
+	// and buildings can't stop it — triggers like water still fire) and floats
+	// free in all six directions with the space free-float look (mouse pitches
+	// the body, Q/E roll). WASD = along the view, Space / Ctrl = up / down,
+	// Shift = fast. It keeps pace with the nearest planet so you don't get left
+	// behind by its orbit. Toggling OFF drops you back to normal wherever you
+	// are, matched to that planet, and the usual re-entry eases your feet down.
+	public bool Noclip { get; private set; }
+	public float noclipSpeed = 15f;
+	public float noclipFastMultiplier = 10f;
+	Vector3 _noclipVel;
+	CelestialBody _noclipBody;
+
+	public void SetNoclip(bool on)
+	{
+		if (on == Noclip || rb == null) return;
+		Noclip = on;
+		_noclipBody = NearestBodyForNoclip();
+		if (on)
+		{
+			rb.velocity = Vector3.zero;
+			rb.angularVelocity = Vector3.zero;
+			rb.isKinematic = true;
+			_noclipVel = Vector3.zero;
+		}
+		else
+		{
+			rb.isKinematic = false;
+			rb.velocity = _noclipBody != null ? _noclipBody.velocity : Vector3.zero;   // at rest on that planet
+			rb.angularVelocity = Vector3.zero;
+		}
+		Debug.Log($"[Noclip] {(on ? "ON" : "OFF")} near {(_noclipBody != null ? _noclipBody.bodyName : "nothing")}");
+	}
+
+	CelestialBody NearestBodyForNoclip()
+	{
+		CelestialBody best = null;
+		float bestD = float.MaxValue;
+		var bodies = NBodySimulation.Bodies;
+		for (int i = 0; i < bodies.Length; i++)
+		{
+			var b = bodies[i];
+			if (b == null || b.bodyType == CelestialBody.BodyType.Sun) continue;
+			float d = (b.Position - rb.position).magnitude - b.radius;
+			if (d < bestD) { bestD = d; best = b; }
+		}
+		return best;
+	}
+
+	void NoclipFixedTick()
+	{
+		float dt = Time.fixedDeltaTime;
+		// Full 6DOF look while flying (same as open space); the re-entry blend
+		// takes over when noclip ends.
+		FreeFloating = true;
+		_wasFreeFloating = true;
+		ApplyLook();
+
+		if (Time.time >= _nextNoclipBodyCheck)
+		{
+			_nextNoclipBodyCheck = Time.time + 0.5f;
+			_noclipBody = NearestBodyForNoclip();
+		}
+
+		Vector3 wish = Vector3.zero;
+		bool blocked = PauseState.MenuOpen || AIChatScreen.IsTypingActive || isInDialogue;
+		if (!blocked && cam != null)
+		{
+			var ct = cam.transform;
+			if (Input.GetKey(KeyCode.W)) wish += ct.forward;
+			if (Input.GetKey(KeyCode.S)) wish -= ct.forward;
+			if (Input.GetKey(KeyCode.D)) wish += ct.right;
+			if (Input.GetKey(KeyCode.A)) wish -= ct.right;
+			if (Input.GetKey(KeyCode.Space)) wish += ct.up;
+			if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C)) wish -= ct.up;
+			if (wish.sqrMagnitude > 1f) wish.Normalize();
+			bool fast = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+			wish *= noclipSpeed * (fast ? noclipFastMultiplier : 1f);
+		}
+		_noclipVel = Vector3.Lerp(_noclipVel, wish, 1f - Mathf.Exp(-8f * dt));
+		Vector3 frame = _noclipBody != null ? _noclipBody.velocity : Vector3.zero;
+		rb.MovePosition(rb.position + (frame + _noclipVel) * dt);
+		isGrounded = false;
+	}
+	float _nextNoclipBodyCheck;
 
 	public void SetVelocity(Vector3 velocity)
 	{

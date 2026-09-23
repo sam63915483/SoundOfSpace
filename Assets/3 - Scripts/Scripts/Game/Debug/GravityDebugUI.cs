@@ -72,6 +72,12 @@ public class GravityDebugUI : MonoBehaviour {
 	TextMeshProUGUI _crystalButtonLabel;
 	int _lastShownCrystalAmount = int.MinValue;
 
+	GameObject _noclipButton;
+	RectTransform _noclipButtonRT;
+	TextMeshProUGUI _noclipButtonLabel;
+	Image _noclipButtonImage;
+	bool? _lastShownNoclip;
+
 	void Update () {
 		if (Input.GetKeyDown (KeyCode.BackQuote)) {
 			show = !show;
@@ -197,6 +203,92 @@ public class GravityDebugUI : MonoBehaviour {
 				}
 			}
 		}
+
+		EnsureNoclipButton();
+		if (_noclipButton != null) {
+			if (_noclipButton.activeSelf != show) _noclipButton.SetActive(show);
+			if (show) {
+				PositionNoclipButton();
+				var lp = LocalPlayer();
+				bool on = lp != null && lp.Noclip;
+				if (!_lastShownNoclip.HasValue || _lastShownNoclip.Value != on) {
+					_lastShownNoclip = on;
+					if (_noclipButtonLabel != null)
+						_noclipButtonLabel.text = on ? "Noclip: <b>ON</b> (debug)" : "Noclip: <b>OFF</b> (debug)";
+					if (_noclipButtonImage != null)
+						_noclipButtonImage.color = on
+							? new Color32(150, 60, 190, 235)   // purple while flying
+							: new Color32(80,  80,  90, 235);
+				}
+			}
+		}
+	}
+
+	// Noclip: fly anywhere through anything (WASD along the view, Space/Ctrl up/down,
+	// Shift fast, mouse + Q/E steer). Press again to drop back to normal where you are.
+	void EnsureNoclipButton() {
+		if (_noclipButton != null) return;
+		if (info == null) return;
+		if (_gravityRT == null) _gravityRT = info.GetComponent<RectTransform>();
+		if (_gravityRT == null || _gravityRT.parent == null) return;
+
+		var btnGo = new GameObject("Debug+Noclip", typeof(RectTransform));
+		btnGo.transform.SetParent(_gravityRT.parent, false);
+		_noclipButtonRT = btnGo.GetComponent<RectTransform>();
+		_noclipButtonRT.anchorMin = _gravityRT.anchorMin;
+		_noclipButtonRT.anchorMax = _gravityRT.anchorMax;
+		_noclipButtonRT.pivot     = new Vector2(0f, 1f);
+		_noclipButtonRT.sizeDelta = new Vector2(260f, 48f);
+		_noclipButtonRT.localScale = _gravityRT.localScale;
+
+		_noclipButtonImage = btnGo.AddComponent<Image>();
+		_noclipButtonImage.color = new Color32(80, 80, 90, 235);
+
+		var btn = btnGo.AddComponent<Button>();
+		btn.targetGraphic = _noclipButtonImage;
+		btn.onClick.AddListener(ToggleNoclip);
+
+		var lblGo = new GameObject("Label", typeof(RectTransform));
+		lblGo.transform.SetParent(btnGo.transform, false);
+		var lblRT = lblGo.GetComponent<RectTransform>();
+		lblRT.anchorMin = Vector2.zero;
+		lblRT.anchorMax = Vector2.one;
+		lblRT.offsetMin = Vector2.zero;
+		lblRT.offsetMax = Vector2.zero;
+		_noclipButtonLabel = lblGo.AddComponent<TextMeshProUGUI>();
+		_noclipButtonLabel.text = "Noclip: <b>OFF</b> (debug)";
+		_noclipButtonLabel.alignment = TextAlignmentOptions.Center;
+		_noclipButtonLabel.fontSize = 22;
+		_noclipButtonLabel.fontStyle = FontStyles.Bold;
+		_noclipButtonLabel.color = Color.white;
+		_noclipButtonLabel.raycastTarget = false;
+
+		_noclipButton = btnGo;
+	}
+
+	void PositionNoclipButton() {
+		if (_crystalButtonRT == null || _noclipButtonRT == null) return;
+		// Stack directly under the +Crystals button.
+		_noclipButtonRT.anchoredPosition = NextSlot(_crystalButtonRT.anchoredPosition, _crystalButtonRT.sizeDelta.y, _noclipButtonRT);
+	}
+
+	// The player at THIS keyboard (co-op puppets also carry a PlayerController).
+	PlayerController LocalPlayer() {
+		if (_cachedPlayer != null && _cachedPlayer.isActiveAndEnabled) return _cachedPlayer;
+		var all = PlayerRoster.All();
+		for (int i = 0; i < all.Count; i++)
+			if (all[i].IsLocal && all[i].Transform != null) {
+				var pc = all[i].Transform.GetComponentInParent<PlayerController>();
+				if (pc != null) { _cachedPlayer = pc; return pc; }
+			}
+		if (_cachedPlayer == null) _cachedPlayer = FindObjectOfType<PlayerController>();
+		return _cachedPlayer;
+	}
+
+	void ToggleNoclip() {
+		var p = LocalPlayer();
+		if (p == null) { Debug.LogWarning("[GravityDebugUI] No player found — noclip not toggled."); return; }
+		p.SetNoclip(!p.Noclip);
 	}
 
 	void EnsureMoneyButton() {

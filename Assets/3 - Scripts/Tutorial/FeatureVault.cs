@@ -440,4 +440,12 @@ public static class FeatureVault
     /// path and the FireflyGlow status all stay alive and cost nothing with no
     /// bug to catch, so flipping this never disturbs a save.
     public static readonly bool Fireflies = true;
+
+    /// CAVE SPIDERS — hostile spiders living in the moon's cave network (Sam,
+    /// 2026-09-23). They crawl on floors, walls and roofs, drop and leap through
+    /// the low gravity inside Constant Companion, and bite. Separate from the
+    /// vaulted alien `Enemies` switch on purpose: turning the spiders on does
+    /// not bring the aliens back. Only the SPAWNER (CaveSpiderSpawner on the
+    /// Cave_Moon prefab) is gated; nothing about them is saved.
+    public static readonly bool CaveSpiders = true;
 }

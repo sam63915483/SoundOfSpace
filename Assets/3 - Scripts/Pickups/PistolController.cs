@@ -642,8 +642,10 @@ public class PistolController : MonoBehaviour
                     // Spawn BEFORE TakeDamage: a kill shot triggers death (ragdoll +
                     // collider disable) which otherwise suppresses the spray. Parent
                     // it to the hit collider so it rides with a moving enemy.
-                    BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
-                        hit.collider != null ? hit.collider.transform : null);
+                    // Not on cave spiders: they get only their short hit splash (Sam).
+                    if (!(damageable is CaveSpider))
+                        BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
+                            hit.collider != null ? hit.collider.transform : null);
 
                     damageable.TakeDamage(damagePerShot);
                 }
@@ -689,6 +691,7 @@ public class PistolController : MonoBehaviour
         // never runs. EnemySync relays the shot so the host can run it for real,
         // and shares this constant so the two earshots cannot drift apart.
         EnemyController.AlertNearby(origin, GunshotAlertRadius);
+        CaveSpider.AlertNearby(origin, GunshotAlertRadius);   // and the cave spiders
 
         Transform muzzle = muzzlePoint != null ? muzzlePoint : _resolvedMuzzle;
         Vector3 tracerStart = muzzle != null ? muzzle.position : (origin + forward * 0.5f);
