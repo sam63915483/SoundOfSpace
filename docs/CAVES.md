@@ -76,6 +76,18 @@ MEASURING the lowest mesh vertex along the surface normal (no pivot maths),
 (floating stalactite tips). Network mix: tunnels r 2.1-2.9 m, rooms 5-9 m with
 the odd 9-11 m cavern, 8-12 loops.
 
+**Round 6 (same day):** skin = everything within 2.5 m of the terrain surface
+plus the first 8 m of ramp (the sinkhole rim at any path distance was leaking
+the cave shader); `DropIslands` removes every connected piece under 300
+triangles (pinched stalactite tips were the "floating chunks"; tips are now
+≥ 0.42 m, a cell); moon rock throughout the interior with the crater normal
+map fading out over ~22 m of path; caverns (6-13 m) joined by long tunnels
+(14-24 m legs, r 2.6-3.5 m); crystals only in caverns, oriented with
+FromToRotation(up, normal) × spin (the LookRotation×Euler(90) construction
+put some upside down). Also: the backtick debug menu wraps its cheat buttons
+into a second column when they would fall off the screen (`NextSlot` in
+`GravityDebugUI`), and god mode keeps the suit O2 full (`OxygenManager`).
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

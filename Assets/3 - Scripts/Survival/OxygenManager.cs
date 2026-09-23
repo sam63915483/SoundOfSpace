@@ -200,6 +200,12 @@ public class OxygenManager : MonoBehaviour
 
     void FixedUpdate()
     {
+
+        // God mode (backtick debug menu) — the suit never drains. Topped up every
+
+        // tick so it holds whatever the drain logic below does.
+
+        if (GravityDebugUI.GodMode) suitO2 = suitMax;
         float dt = Time.fixedDeltaTime;
         if (dt <= 0f) return;
 

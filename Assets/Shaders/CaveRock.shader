@@ -30,8 +30,8 @@ Shader "Custom/CaveRock"
         _FlatColB ("Moon flat colour B", Color) = (0.736, 0.736, 0.736, 1)
         _SteepCol ("Moon steep colour", Color) = (0.0577, 0.0469, 0.0849, 1)
         _MoonBrightness ("Moon brightness match", Range(0.5, 1.2)) = 0.86
-        _FadeStart ("Fade to cave stone: start (path 0..1)", Range(0, 1)) = 0.3
-        _FadeEnd ("Fade to cave stone: end (path 0..1)", Range(0, 1)) = 0.7
+        _FadeStart ("Craters fade out: start (path 0..1)", Range(0, 1)) = 0.3
+        _FadeEnd ("Craters fade out: end (path 0..1)", Range(0, 1)) = 1.0
         _ExposureFloor ("Minimum daylight inside", Range(0, 0.3)) = 0.03
         _ExposurePower ("Daylight falloff", Range(0.5, 3)) = 1.6
     }
@@ -146,8 +146,16 @@ Shader "Custom/CaveRock"
             fixed3 caveAlb = (tex2D(_MainTex, pc.zy).rgb * bw.x + tex2D(_MainTex, pc.xz).rgb * bw.y + tex2D(_MainTex, pc.xy).rgb * bw.z) * _Color.rgb;
             float3 caveN = TriplanarNormal(RawNormal(tex2D(_BumpMap, pc.zy).rg, _BumpScale), RawNormal(tex2D(_BumpMap, pc.xz).rg, _BumpScale), RawNormal(tex2D(_BumpMap, pc.xy).rg, _BumpScale), n, bw, axisSign);
 
-            fixed3 alb = lerp(caveAlb, moonAlb, moon);
-            float3 objN = normalize(lerp(caveN, moonN, moon));
+            // Moon rock everywhere (Sam): the moon's colours throughout, the
+            // moon's steep colour lifted a little inside so torch-lit walls read
+            // as dark rock; the CRATERS fade out with depth (a cave is sheltered)
+            // and the rock normal map takes over, with a touch of the cave's
+            // own cracks deep down.
+            fixed3 steepInside = lerp(_SteepCol.rgb, fixed3(0.24, 0.22, 0.27), 1.0 - moon);
+            fixed3 moonAlbInside = lerp(flat, steepInside, steep) * _MoonBrightness;
+            fixed3 alb = lerp(moonAlbInside, moonAlb, moon);
+            float3 deepN = normalize(lerp(nSteep, caveN, 0.35));
+            float3 objN = normalize(lerp(normalize(lerp(n, deepN, _NormalStrength)), moonN, moon));
 
             // Object space → tangent space, which is what the surface shader wants.
             float3 T = IN.objTangent.xyz;

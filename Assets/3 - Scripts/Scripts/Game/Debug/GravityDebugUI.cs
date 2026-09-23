@@ -248,7 +248,31 @@ public class GravityDebugUI : MonoBehaviour {
 		_moneyButton = btnGo;
 	}
 
+	// The cheat buttons hang in a chain under the gravity read-out, and that
+	// read-out grows with the number of bodies — with the dwarf planets and the
+	// moon caves the chain ran off the bottom of the screen and GOD MODE could
+	// not be clicked (Sam, 2026-09-22). Each slot checks whether the button
+	// would fall below the screen and, if so, starts a new column to the right.
+	float _columnTopY;
+	int _column;
+	Vector2 NextSlot(Vector2 prevPos, float prevHeight, RectTransform self) {
+		float h = self != null ? self.sizeDelta.y : 48f;
+		Vector2 proposed = new Vector2(prevPos.x, prevPos.y - prevHeight - 8f);
+		var parentRT = _gravityRT != null ? _gravityRT.parent as RectTransform : null;
+		float canvasH = parentRT != null ? parentRT.rect.height : Screen.height;
+		float anchorY = _gravityRT != null ? _gravityRT.anchorMin.y : 0f;
+		float bottomInCanvas = anchorY * canvasH + proposed.y - h;
+		if (bottomInCanvas < 8f) {
+			_column++;
+			proposed = new Vector2(prevPos.x - (_column - 1) * 0f, _columnTopY);
+			// shift right by the column count relative to the gravity panel's x
+			proposed.x = (_gravityRT != null ? _gravityRT.anchoredPosition.x : 0f) + _column * 272f;
+		}
+		return proposed;
+	}
+
 	void PositionMoneyButton() {
+		_column = 0;
 		if (_gravityRT == null || _moneyButtonRT == null || info == null) return;
 		// The gravity rect has pivot (0,0) (bottom-left). Top-aligned text
 		// starts at the rect's TOP edge (anchoredY + sizeDelta.y) and overflows
@@ -257,7 +281,8 @@ public class GravityDebugUI : MonoBehaviour {
 		Vector2 gravPos = _gravityRT.anchoredPosition;
 		float gravTopY = gravPos.y + _gravityRT.rect.height;
 		float textBottomY = gravTopY - info.preferredHeight;
-		_moneyButtonRT.anchoredPosition = new Vector2(gravPos.x, textBottomY - 14f);
+		_columnTopY = gravTopY;
+		_moneyButtonRT.anchoredPosition = NextSlot(new Vector2(gravPos.x, textBottomY - 14f + 8f), 0f, _moneyButtonRT);
 	}
 
 	void EnsureCrashButton() {
@@ -311,7 +336,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// minus a small gap.
 		Vector2 moneyPos = _moneyButtonRT.anchoredPosition;
 		float moneyHeight = _moneyButtonRT.sizeDelta.y;
-		_crashButtonRT.anchoredPosition = new Vector2(moneyPos.x, moneyPos.y - moneyHeight - 8f);
+		_crashButtonRT.anchoredPosition = NextSlot(moneyPos, moneyHeight, _crashButtonRT);
 	}
 
 	void ToggleHardCrashes() {
@@ -370,7 +395,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the Crash button (which sits under +Money).
 		Vector2 crashPos = _crashButtonRT.anchoredPosition;
 		float crashHeight = _crashButtonRT.sizeDelta.y;
-		_woodButtonRT.anchoredPosition = new Vector2(crashPos.x, crashPos.y - crashHeight - 8f);
+		_woodButtonRT.anchoredPosition = NextSlot(crashPos, crashHeight, _woodButtonRT);
 	}
 
 	void GrantWood() {
@@ -432,7 +457,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the +Wood button (which sits under +NoHardCrash + +Money).
 		Vector2 woodPos = _woodButtonRT.anchoredPosition;
 		float woodHeight = _woodButtonRT.sizeDelta.y;
-		_jetpackButtonRT.anchoredPosition = new Vector2(woodPos.x, woodPos.y - woodHeight - 8f);
+		_jetpackButtonRT.anchoredPosition = NextSlot(woodPos, woodHeight, _jetpackButtonRT);
 	}
 
 	void GrantJetpack() {
@@ -512,7 +537,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the +Jetpack button.
 		Vector2 jetpackPos = _jetpackButtonRT.anchoredPosition;
 		float jetpackHeight = _jetpackButtonRT.sizeDelta.y;
-		_shipButtonRT.anchoredPosition = new Vector2(jetpackPos.x, jetpackPos.y - jetpackHeight - 8f);
+		_shipButtonRT.anchoredPosition = NextSlot(jetpackPos, jetpackHeight, _shipButtonRT);
 	}
 
 	void EnsureGodButton() {
@@ -560,7 +585,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the +Ship button.
 		Vector2 shipPos = _shipButtonRT.anchoredPosition;
 		float shipHeight = _shipButtonRT.sizeDelta.y;
-		_godButtonRT.anchoredPosition = new Vector2(shipPos.x, shipPos.y - shipHeight - 8f);
+		_godButtonRT.anchoredPosition = NextSlot(shipPos, shipHeight, _godButtonRT);
 	}
 
 	void ToggleGodMode() {
@@ -618,7 +643,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the God Mode button (bottom of the column).
 		Vector2 godPos = _godButtonRT.anchoredPosition;
 		float godHeight = _godButtonRT.sizeDelta.y;
-		_bhTestButtonRT.anchoredPosition = new Vector2(godPos.x, godPos.y - godHeight - 8f);
+		_bhTestButtonRT.anchoredPosition = NextSlot(godPos, godHeight, _bhTestButtonRT);
 	}
 
 	void EnsureCrystalButton() {
@@ -673,7 +698,7 @@ public class GravityDebugUI : MonoBehaviour {
 		// Stack directly under the BH Test button (bottom of the column).
 		Vector2 bhPos = _bhTestButtonRT.anchoredPosition;
 		float bhHeight = _bhTestButtonRT.sizeDelta.y;
-		_crystalButtonRT.anchoredPosition = new Vector2(bhPos.x, bhPos.y - bhHeight - 8f);
+		_crystalButtonRT.anchoredPosition = NextSlot(bhPos, bhHeight, _crystalButtonRT);
 	}
 
 	void GrantCrystals() {

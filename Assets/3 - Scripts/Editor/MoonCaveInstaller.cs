@@ -97,9 +97,11 @@ public static class MoonCaveInstaller
         public float lenMin = 9f, lenMax = 14f;     // metres of arc per leg
         public float descMin = -0.5f, descMax = 3.5f; // metres of depth gained per leg
         public float branchKeep = 0.55f;            // chance a node stays open for another child
-        public float roomProb = 0.5f, roomMin = 5f, roomMax = 8.5f, roomW = 1.15f, roomH = 1.0f;
-        public float bigRoomProb = 0.12f, bigRoomMin = 9f, bigRoomMax = 11f;   // the odd great cavern
-        public float rMin = 2.1f, rMax = 2.9f, wMin = 1.1f, wMax = 1.35f, hMin = 0.85f, hMax = 1.0f;
+        // Caverns joined by tunnels that feel like tunnels: long legs, a cavern
+        // at most nodes, passages wide enough not to feel claustrophobic.
+        public float roomProb = 0.7f, roomMin = 6f, roomMax = 9.5f, roomW = 1.2f, roomH = 1.0f;
+        public float bigRoomProb = 0.15f, bigRoomMin = 10f, bigRoomMax = 13f;   // the odd great cavern
+        public float rMin = 2.6f, rMax = 3.2f, wMin = 1.25f, wMax = 1.45f, hMin = 0.9f, hMax = 1.05f;
         public float minDepth = 9f, maxDepth = 28f;          // 28: keeps 12 m clear of the core with 3 m walls (30 gave 11.8)
         public float alongMax = 78f, xMin = -34f, xMax = 34f, sMin = -60f;
         public float sectorHalfDeg = 60f;                    // each cave owns a 120° wedge of the moon (about its axis)...
@@ -110,19 +112,19 @@ public static class MoonCaveInstaller
 
     static readonly NetParams WarrenParams = new NetParams
     {
-        seed = 11, targetLegs = 60, loops = 12, turnMax = 80f, lenMin = 8f, lenMax = 13f,
-        descMin = -0.8f, descMax = 3.0f, branchKeep = 0.6f, roomProb = 0.5f, roomMin = 5f, roomMax = 8f,
+        seed = 11, targetLegs = 34, loops = 8, turnMax = 80f, lenMin = 14f, lenMax = 22f,
+        descMin = -1.0f, descMax = 4.5f, branchKeep = 0.6f, roomProb = 0.7f, roomMin = 6f, roomMax = 9f,
     };
     static readonly NetParams DescentParams = new NetParams
     {
-        seed = 22, targetLegs = 55, loops = 8, turnMax = 100f, lenMin = 9f, lenMax = 14f,
-        descMin = 0.5f, descMax = 4.2f, branchKeep = 0.5f, roomProb = 0.5f, roomMin = 5f, roomMax = 8.5f, roomH = 1.15f,
+        seed = 22, targetLegs = 32, loops = 6, turnMax = 100f, lenMin = 14f, lenMax = 22f,
+        descMin = 1.0f, descMax = 6.0f, branchKeep = 0.5f, roomProb = 0.7f, roomMin = 6f, roomMax = 9.5f, roomH = 1.15f,
     };
     static readonly NetParams HallParams = new NetParams
     {
-        seed = 33, targetLegs = 50, loops = 9, turnMax = 75f, lenMin = 10f, lenMax = 15f,
-        descMin = -0.5f, descMax = 3.2f, branchKeep = 0.55f, roomProb = 0.5f, roomMin = 5.5f, roomMax = 9f, roomW = 1.3f, roomH = 0.85f,
-        rMin = 2.4f, rMax = 3.2f, wMin = 1.3f, wMax = 1.6f, hMin = 0.8f, hMax = 0.9f,
+        seed = 33, targetLegs = 30, loops = 7, turnMax = 75f, lenMin = 15f, lenMax = 24f,
+        descMin = -0.5f, descMax = 4.5f, branchKeep = 0.55f, roomProb = 0.7f, roomMin = 6.5f, roomMax = 10f, roomW = 1.3f, roomH = 0.85f,
+        rMin = 2.8f, rMax = 3.5f, wMin = 1.35f, wMax = 1.6f, hMin = 0.85f, hMax = 0.95f,
     };
 
     struct P { public float x, d, s, r, w, h; public P(float x, float d, float s, float r, float w = 1f, float h = 1f) { this.x = x; this.d = d; this.s = s; this.r = r; this.w = w; this.h = h; } }
@@ -542,7 +544,7 @@ public static class MoonCaveInstaller
                 float totalLen = 0f; foreach (var sg in site.layout.segments) totalLen += (sg.b - sg.a).magnitude;
                 float deepest = 0f; foreach (var sg in site.layout.segments) { deepest = Mathf.Max(deepest, site.R - (sg.a - new Vector3(0f, -site.R, 0f)).magnitude); deepest = Mathf.Max(deepest, site.R - (sg.b - new Vector3(0f, -site.R, 0f)).magnitude); }
                 log.AppendLine($"[MoonCaves] Cave {site.name} ({site.title}, {site.recipe}) at moon-local {site.localPos} (R={site.R:0.0}), {site.craterNote}, wedge ±{site.sectorHalfDeg:0}°: {site.layout.segments.Count} legs, {totalLen:0} m of tunnel, {site.layout.rooms.Count} rooms, deepest {deepest:0.0} m; terrain within 16 m of the mouth spans {minH:0.0}..{maxH:0.0} m.");
-                log.AppendLine($"[MoonCaves]   features: {res.featureReport}.");
+                log.AppendLine($"[MoonCaves]   features: {res.featureReport}; {res.islandsDropped} floating triangles dropped.");
                 if (!res.ok)
                 {
                     log.AppendLine($"[MoonCaves]   FAILED: {res.failure}");
@@ -827,7 +829,8 @@ public static class MoonCaveInstaller
         var seeder = Ensure<CaveCrystalSeeder>(root);
         seeder.crystalCount = site.crystals;
         seeder.seed = 90210 + site.name[0];
-        seeder.deepFraction = 0.5f;
+        seeder.deepFraction = 0.3f;
+        seeder.cavernsOnly = true;
         seeder.glowLightEvery = 5;
         seeder.glowMaterial = CaveRockTextures.GetCrystalGlowMaterial();
         GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);

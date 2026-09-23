@@ -57,6 +57,9 @@ public class CaveCrystalSeeder : MonoBehaviour
     [Tooltip("Every Nth crystal also gets a small blue point light. 0 = none.")]
     public int glowLightEvery = 5;
 
+    [Tooltip("Plant only in caverns (the room capsules), never along tunnels.")]
+    public bool cavernsOnly = true;
+
     bool _seeded;
 
     void Start() { Seed(); }
@@ -95,7 +98,11 @@ public class CaveCrystalSeeder : MonoBehaviour
         bool haveDist = volume.capsuleDist != null && volume.capsuleDist.Length == count;
         if (haveDist) for (int i = 0; i < count; i++) maxDist = Mathf.Max(maxDist, volume.capsuleDist[i]);
         for (int i = 0; i < count; i++)
+        {
+            bool isRoom = (volume.capsuleA[i] - volume.capsuleB[i]).sqrMagnitude < 1e-4f;
+            if (cavernsOnly && !isRoom) continue;
             if (!haveDist || volume.capsuleDist[i] >= maxDist * deepFraction) deep.Add(i);
+        }
         if (deep.Count == 0) for (int i = 0; i < count; i++) deep.Add(i);
 
         // Seating: the prefab's mesh bottom in prefab-local units (authored
@@ -134,8 +141,12 @@ public class CaveCrystalSeeder : MonoBehaviour
 
             var go = Instantiate(prefab, hit.point, Quaternion.identity, transform);
             go.name = "CaveCrystal_" + made;
-            go.transform.rotation = Quaternion.LookRotation(hit.normal) *
-                                    Quaternion.Euler(90f, 0f, Random.Range(0f, 360f));
+            // Spin about the crystal's OWN up, then point that up along the
+            // wall normal — the same construction as CrystalSpawner. (The old
+            // LookRotation*Euler(90,0,yaw) spun about the wrong axis, so a yaw
+            // near 180° put the tip on the wall and the base in the air.)
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, hit.normal) *
+                                    Quaternion.AngleAxis(Random.Range(0f, 360f), Vector3.up);
             go.transform.localScale = baseScale * scale;
             // Seat it by MEASURING: the lowest mesh vertex along the surface
             // normal goes exactly onto the hit point (a whisker in). No pivot

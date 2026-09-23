@@ -213,6 +213,7 @@ public static class CaveSolid
         public bool mouthOk = true, roofOk = true;
         public string mouthReport = "", roofReport = "";
         public string featureReport = "";
+        public int islandsDropped;
         public float exposureMean;
         public double seconds;
         public bool ok;
@@ -410,6 +411,7 @@ public static class CaveSolid
 
         int[] kept = ctx.TrimBuried(v, tri, out R.trimOpenEdges, out R.trimShallowest);
         R.trimShallowestAt = ctx.shallowestAt;
+        kept = DropIslands(v.Length, kept, out R.islandsDropped);
 
         // The MOUTH SKIN: every kept triangle within the first metres of the
         // way in and near the surface becomes its own smooth mesh, which the
@@ -419,11 +421,16 @@ public static class CaveSolid
         var caveTris = new List<int>();
         for (int i = 0; i < kept.Length; i += 3)
         {
+            // Skin = anything that can be seen from outside: within 2.5 m of
+            // the terrain surface (the sinkhole floor and rim, whatever its
+            // path distance), plus the first metres of ramp under the roof.
             bool skin = true;
             for (int k = 0; k < 3 && skin; k++)
             {
                 Vector3 p = v[kept[i + k]];
-                if (path[kept[i + k]] > MouthSkinPathMetres || p.y < ctx.GroundAt(p) - 9f) skin = false;
+                bool nearSurface = p.y > ctx.GroundAt(p) - 2.5f;
+                bool ramp = path[kept[i + k]] <= MouthSkinPathMetres && p.y > ctx.GroundAt(p) - 9f;
+                if (!nearSurface && !ramp) skin = false;
             }
             (skin ? skinTris : caveTris).AddRange(new[] { kept[i], kept[i + 1], kept[i + 2] });
         }
@@ -938,7 +945,7 @@ public static class CaveSolid
                 float maxLen = Mathf.Max(0.5f, (wpV - floorY) - 2.4f);
                 float len = Mathf.Min(Rand(0.9f, 3.2f), maxLen);
                 float rb = Rand(0.35f, 0.8f);
-                interior.Add(new Feature { kind = FeatureKind.Cone, a = wp + dir * 0.9f, b = wp - hst.up * len, ra = rb * 1.3f, rb = 0.14f });
+                interior.Add(new Feature { kind = FeatureKind.Cone, a = wp + dir * 1.2f, b = wp - hst.up * len, ra = rb * 1.4f, rb = 0.42f });
             }
             // Stalagmites and boulders: on the floor, off the centre line.
             for (int i = 0; i < st.stalagmites + st.boulders + st.rubble; i++)
@@ -955,7 +962,7 @@ public static class CaveSolid
                     // annoying to walk on (Sam). They also sit at the walls.
                     float len = Rand(1.4f, 2.8f);
                     float rb = Rand(0.8f, 1.15f);
-                    interior.Add(new Feature { kind = FeatureKind.Cone, a = wp - hst.up * 0.9f, b = wp + hst.up * len, ra = rb * 1.3f, rb = 0.16f });
+                    interior.Add(new Feature { kind = FeatureKind.Cone, a = wp - hst.up * 1.2f, b = wp + hst.up * len, ra = rb * 1.4f, rb = 0.45f });
                 }
                 else if (rub)
                 {
@@ -1407,6 +1414,32 @@ public static class CaveSolid
 
     /// Metres of tunnel from the mouth that render as moon surface.
     public const float MouthSkinPathMetres = 8f;
+
+    /// Removes every connected piece of the mesh except the big ones. Any
+    /// blob of fewer than 300 triangles is a pinched-off stalactite tip or a
+    /// sliver of hull — the "floating chunks" Sam kept finding — never cave.
+    static int[] DropIslands(int vertexCount, int[] tris, out int dropped)
+    {
+        var parent = new int[vertexCount];
+        for (int i = 0; i < vertexCount; i++) parent[i] = i;
+        int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+        void Union(int a, int b) { a = Find(a); b = Find(b); if (a != b) parent[a] = b; }
+        for (int i = 0; i < tris.Length; i += 3) { Union(tris[i], tris[i + 1]); Union(tris[i], tris[i + 2]); }
+        var count = new Dictionary<int, int>();
+        for (int i = 0; i < tris.Length; i += 3)
+        {
+            int r = Find(tris[i]);
+            count.TryGetValue(r, out int n); count[r] = n + 1;
+        }
+        var kept = new List<int>(tris.Length);
+        dropped = 0;
+        for (int i = 0; i < tris.Length; i += 3)
+        {
+            if (count[Find(tris[i])] < 300) { dropped++; continue; }
+            kept.Add(tris[i]); kept.Add(tris[i + 1]); kept.Add(tris[i + 2]);
+        }
+        return kept.ToArray();
+    }
 
     /// A smooth-shaded mesh from a subset of the pre-facet triangles (re-indexed).
     static Mesh SmoothSubmesh(Vector3[] v, Vector3[] n, Color[] c, int[] tris)
