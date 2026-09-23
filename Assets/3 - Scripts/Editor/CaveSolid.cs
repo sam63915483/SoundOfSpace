@@ -712,6 +712,9 @@ public static class CaveSolid
             float r = room.radius, w = room.w, h = room.h;
             Vector3 q = new Vector3(l1 / (w * r), v / (h * r), l2 / (w * r));
             float d = (q.magnitude - 1f) * Mathf.Min(w, h) * r;
+            // A room AT the body's centre is the zero-g core: a true sphere,
+            // no floor (a flat floor made its lower half solid rock).
+            if ((room.centre - centre).sqrMagnitude < 1f) { floorness = 0f; upness = 0.5f; return d; }
             float floorV = -h * r * FloorSquash;
             float floorCut = floorV - v;
             floorness = Mathf.Clamp01((floorCut - d) / 0.8f + 0.5f);
