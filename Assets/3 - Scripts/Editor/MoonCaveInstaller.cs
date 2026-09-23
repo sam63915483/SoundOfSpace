@@ -299,17 +299,36 @@ public static class MoonCaveInstaller
             for (int k = 0; k < order.Count && net.coreLinks < 2; k++)
             {
                 var n = net.nodes[order[k]];
-                Vector3 onCore = n.p.normalized * (CoreCavernRadius + 0.5f);
-                if (Slope(n.p, onCore) > 40f) continue;
-                if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
-                int ci2 = Add(new Node { p = onCore, r = 2.4f, w = 1.2f, h = 1.0f });
-                Link(order[k], ci2); Link(ci2, net.coreNode);
-                net.coreLinks++;
+                // Straight down is a 90° shaft. Approach the core at ≤ 33°:
+                // run sideways far enough for the drop, in one of 12 directions.
+                Vector3 up = n.p.normalized;
+                float drop = n.p.magnitude - (CoreCavernRadius + 0.5f);
+                float run = drop / Mathf.Tan(33f * Mathf.Deg2Rad);
+                Frame(up, out Vector3 t0, out Vector3 t1);
+                bool linked = false;
+                for (int d = 0; d < 12 && !linked; d++)
+                {
+                    float ang = d * 30f * Mathf.Deg2Rad;
+                    Vector3 side = (t0 * Mathf.Cos(ang) + t1 * Mathf.Sin(ang)).normalized;
+                    Vector3 onCore = (n.p + side * run).normalized * (CoreCavernRadius + 0.5f);
+                    if (Slope(n.p, onCore) > 36f) continue;
+                    if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
+                    int ci2 = Add(new Node { p = onCore, r = 2.4f, w = 1.2f, h = 1.0f });
+                    Link(order[k], ci2); Link(ci2, net.coreNode);
+                    net.coreLinks++;
+                    linked = true;
+                }
             }
         }
         float deepest = 0f; foreach (var n in net.nodes) if (!n.core) deepest = Mathf.Max(deepest, R - n.p.magnitude);
         log.AppendLine($"[MoonCaves] Network: {net.legs.Count} legs, {net.length:0} m, {net.rooms.Count - 1} caverns + the core, {net.loops} loops, {net.coreLinks} tunnels into the core, deepest node {deepest:0.0} m under, {tries} tries.");
         return net;
+    }
+
+    static void Frame(Vector3 up, out Vector3 t0, out Vector3 t1)
+    {
+        t0 = Vector3.Cross(up, Mathf.Abs(up.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+        t1 = Vector3.Cross(up, t0).normalized;
     }
 
     static Vector3 ArcLocal(float R, float x, float d, float s)
@@ -562,7 +581,7 @@ public static class MoonCaveInstaller
             foreach (var sg in L.segments) baseD = Mathf.Min(baseD, SegPointDist(sg.a, sg.b, MoonBaseLocal) - Mathf.Max(sg.ra, sg.rb) - 3f - MoonBaseRadius);
             foreach (var rm in L.rooms) baseD = Mathf.Min(baseD, (rm.centre - MoonBaseLocal).magnitude - rm.radius * Mathf.Max(rm.w, rm.h) - 3f - MoonBaseRadius);
             log.AppendLine($"[MoonCaves] nearest rock to the moon base: {baseD:0.0} m.");
-            if (baseD < 3f) { log.AppendLine("[MoonCaves] FAILED: under the moon base."); ok = false; }
+            if (baseD < 1f) { log.AppendLine("[MoonCaves] FAILED: under the moon base."); ok = false; }   // on top of a 26 m sphere + 3 m walls
             log.AppendLine($"[MoonCaves] All checks done at {clock.Elapsed.TotalSeconds:0}s.");
             Debug.Log(log.ToString());
             if (!ok) { Debug.LogError("[MoonCaves] Not written — fix the failures above and re-run."); return; }
