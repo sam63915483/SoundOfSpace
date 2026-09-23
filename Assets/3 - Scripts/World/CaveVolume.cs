@@ -63,6 +63,9 @@ public class CaveVolume : MonoBehaviour
     [Tooltip("Feed this cave's capsules to the ocean cutout shader. Leave OFF on a body with no ocean (the moon caves): the cutout takes at most 32 capsules in total and would waste them on water that isn't there.")]
     public bool affectsOcean = true;
 
+    [Tooltip("Path distance from the mouth, in metres, per capsule (written by the installer). Lets the crystal seeder keep to the deeper half.")]
+    public float[] capsuleDist;
+
     // How many caves currently contain the camera. Oceans go back on at zero.
     static int s_oceanSuppressors;
     static PlanetEffects[] s_planetEffects;

@@ -1,52 +1,61 @@
 using UnityEngine;
 
 /// <summary>
-/// Grows crystals out of the cave's walls, roof and floor — a lot more of them
-/// than the surface has, so the cave is where you go when you need crystals.
+/// Grows crystals on the walls, roof and floor of a cave — in its DEEPER half
+/// only, seated on the rock the way the surface spawner seats them on the
+/// ground, with a subtle pulsing blue glow.
 ///
 /// HOW THEY'RE PLACED
 /// Rays are fired outward from random points on the cave's own centre-lines
-/// (the CaveVolume capsules) in random directions, and a crystal is planted
-/// wherever one hits the cave shell, aligned to the surface normal. That means
-/// they land on whatever surface the ray happens to find — wall, ceiling or
-/// floor — with no special cases, and they follow the cave automatically if its
-/// layout is regenerated.
+/// (the CaveVolume capsules) in random directions; wherever one hits the cave
+/// shell a crystal is planted, its base ON the surface (the prefab's mesh
+/// bottom is measured and lifted out, exactly as CrystalSpawner does), aligned
+/// to the surface normal. Only capsules at least `deepFraction` of the way
+/// along the cave (CaveVolume.capsuleDist, path metres from the mouth) are
+/// used, so the entrance stays bare and the reward is for going deep.
 ///
-/// Placement is DETERMINISTIC: the RNG is seeded from a fixed number, so the
-/// same cave always grows the same crystals rather than a different set every
-/// time you load.
+/// Placement is DETERMINISTIC (seeded), so the same cave grows the same crystals.
 ///
-/// They are ordinary SpawnedCrystals, so the axe, the drops and the +N popup all
-/// work exactly as they do on the surface.
+/// They are ordinary SpawnedCrystals: the axe, the drops and the +N popup work
+/// as on the surface. The crystal prefab is AUTHORED at scale ~17 and the
+/// spawner multiplies by that; so does this (a plain scale of 1-2 made them a
+/// few centimetres tall — 130 per cave that nobody could find).
 ///
-/// KNOWN LIMIT: mined cave crystals come back when the scene reloads. The
-/// surface spawner tracks consumed cells in the save; this doesn't yet. Living
-/// with it for now — worth fixing if crystal farming ever matters.
+/// KNOWN LIMIT: mined cave crystals come back when the scene reloads.
 /// </summary>
 [RequireComponent(typeof(CaveVolume))]
 public class CaveCrystalSeeder : MonoBehaviour
 {
-    [Tooltip("How many crystals to try to plant. The surface spawner caps out around 20 in a 300 m radius, so this is deliberately far denser.")]
-    public int crystalCount = 70;
+    [Tooltip("How many crystals to try to plant.")]
+    public int crystalCount = 45;
 
     [Tooltip("Crystal prefab. Left empty, the seeder borrows whatever the scene's CrystalSpawner uses, so cave crystals always match surface ones.")]
     public GameObject crystalPrefab;
 
-    [Tooltip("Size range. Slightly smaller than surface crystals on average — they're growing out of a wall, not standing in a field.")]
+    [Tooltip("Size range, as a multiplier on the prefab's authored scale — same convention as CrystalSpawner.")]
     public float minScale = 0.8f;
-    public float maxScale = 2.2f;
+    public float maxScale = 2.0f;
 
     [Tooltip("Bias toward smaller crystals. Higher = more small ones, the odd big one.")]
     public float scaleBiasExponent = 2f;
 
-    [Tooltip("Push into the rock, so a crystal reads as growing OUT of the wall rather than balancing on it.")]
-    public float embedDepth = 0.25f;
+    [Tooltip("Metres the base is pushed into the rock after seating, so it never floats on a faceted wall.")]
+    public float embedDepth = 0.08f;
 
     [Tooltip("Keeps them apart so they don't grow into clumps.")]
-    public float minSpacing = 1.6f;
+    public float minSpacing = 2.2f;
 
     [Tooltip("Deterministic — the same cave always grows the same crystals.")]
     public int seed = 90210;
+
+    [Tooltip("Only capsules at least this fraction of the way along the cave (by path distance from the mouth) get crystals.")]
+    public float deepFraction = 0.5f;
+
+    [Tooltip("Material with emission enabled (CaveCrystal_Glow.mat). Assigned to every cave crystal so the glow can pulse. Empty = no glow.")]
+    public Material glowMaterial;
+
+    [Tooltip("Every Nth crystal also gets a small blue point light. 0 = none.")]
+    public int glowLightEvery = 5;
 
     bool _seeded;
 
@@ -75,23 +84,35 @@ public class CaveCrystalSeeder : MonoBehaviour
             return;
         }
 
-        // Own RNG state so seeding can't disturb anyone else's random sequence,
-        // and restore it afterwards.
+        // The deeper half: capsules by path distance from the mouth.
+        int count = volume.capsuleA.Length;
+        var deep = new System.Collections.Generic.List<int>(count);
+        float maxDist = 0f;
+        bool haveDist = volume.capsuleDist != null && volume.capsuleDist.Length == count;
+        if (haveDist) for (int i = 0; i < count; i++) maxDist = Mathf.Max(maxDist, volume.capsuleDist[i]);
+        for (int i = 0; i < count; i++)
+            if (!haveDist || volume.capsuleDist[i] >= maxDist * deepFraction) deep.Add(i);
+        if (deep.Count == 0) for (int i = 0; i < count; i++) deep.Add(i);
+
+        // Seating: the prefab's mesh bottom in prefab-local units (authored
+        // scale stripped), converted to metres with the authored scale — the
+        // same maths as CrystalSpawner.TryComputeCrystalPlacement.
+        Vector3 baseScale = prefab.transform.localScale;
+        float bottomY = SpawnerCubeface.ComputeLocalBottomY(prefab) * baseScale.y;
+
         var previousState = Random.state;
         Random.InitState(seed);
 
         var spawner = FindObjectOfType<CrystalSpawner>();
         var placed = new System.Collections.Generic.List<Vector3>(crystalCount);
         int n = Mathf.Max(0, crystalCount);
-        int attempts = 0, made = 0;
+        int attempts = 0, made = 0, lights = 0;
 
-        while (made < n && attempts < n * 12)
+        while (made < n && attempts < n * 14)
         {
             attempts++;
 
-            // A random point on a random passage, then a random direction out
-            // from it. Whatever the ray hits is a wall, roof or floor.
-            int c = Random.Range(0, volume.capsuleA.Length);
+            int c = deep[Random.Range(0, deep.Count)];
             Vector3 from = transform.TransformPoint(
                 Vector3.Lerp(volume.capsuleA[c], volume.capsuleB[c], Random.value));
             Vector3 dir = Random.onUnitSphere;
@@ -107,18 +128,14 @@ public class CaveCrystalSeeder : MonoBehaviour
             float t = Mathf.Pow(Random.value, scaleBiasExponent);
             float scale = Mathf.Lerp(minScale, maxScale, t);
 
-            var go = Instantiate(prefab, hit.point - hit.normal * embedDepth * scale,
-                                 Quaternion.identity, transform);
+            // Base on the surface: lift by the mesh bottom, then a whisker in.
+            Vector3 pos = hit.point - hit.normal * (bottomY * scale + embedDepth);
+            var go = Instantiate(prefab, pos, Quaternion.identity, transform);
             go.name = "CaveCrystal_" + made;
-            // Grow along the surface normal, with a random spin so they don't
-            // all face the same way.
             go.transform.rotation = Quaternion.LookRotation(hit.normal) *
                                     Quaternion.Euler(90f, 0f, Random.Range(0f, 360f));
-            // The crystal prefab is AUTHORED at scale ~17 (CrystalSpawner
-            // multiplies by that). Setting the scale to 1-2 directly made
-            // every cave crystal a few centimetres tall — 130 per cave, none
-            // findable (Sam, twice). Same rule as the surface spawner now.
-            go.transform.localScale = prefab.transform.localScale * scale;
+            go.transform.localScale = baseScale * scale;
+
             // The prefab ships with no collider; the axe needs one to hit.
             if (go.GetComponentInChildren<Collider>(true) == null)
             {
@@ -131,10 +148,28 @@ public class CaveCrystalSeeder : MonoBehaviour
                 }
             }
 
+            if (glowMaterial != null)
+            {
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true)) r.sharedMaterial = glowMaterial;
+                var glow = go.AddComponent<CrystalGlow>();
+                if (glowLightEvery > 0 && made % glowLightEvery == 0)
+                {
+                    var lgo = new GameObject("Glow");
+                    lgo.transform.SetParent(go.transform, false);
+                    lgo.transform.position = hit.point + hit.normal * 0.6f;
+                    var l = lgo.AddComponent<Light>();
+                    l.type = LightType.Point;
+                    l.color = glow.glow;
+                    l.range = 6f;
+                    l.intensity = 0.5f;
+                    l.shadows = LightShadows.None;
+                    glow.pulseLight = l;
+                    lights++;
+                }
+            }
+
             var crystal = go.GetComponent<SpawnedCrystal>();
             if (crystal == null) crystal = go.AddComponent<SpawnedCrystal>();
-            // slot -1 / a unique id: these are not part of the surface spawner's
-            // cell grid, and Mine() just destroys the instance.
             crystal.Init(spawner, -1, made + 1L, scale);
 
             placed.Add(hit.point);
@@ -142,8 +177,8 @@ public class CaveCrystalSeeder : MonoBehaviour
         }
 
         Random.state = previousState;
-        Debug.Log($"[CaveCrystalSeeder] Grew {made} crystals in '{name}' " +
-                  $"({attempts} attempts). Surface spawner caps around 20 across a 300 m radius.");
+        Debug.Log($"[CaveCrystalSeeder] Grew {made} crystals in '{name}' ({attempts} attempts, " +
+                  $"{deep.Count}/{count} deep capsules, {lights} glow lights).");
     }
 
     static GameObject BorrowSurfacePrefab()

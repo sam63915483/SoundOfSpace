@@ -65,15 +65,17 @@ public static class MoonCaveInstaller
 
         // filled during install
         public Vector3 localPos; public Quaternion localRot; public float R;
+        public float sectorHalfDeg = 60f;      // half the angle to the nearest other mouth, minus a margin
+        public string craterNote = "";
         public CaveSolid.Layout layout; public CaveSolid.Result result;
         public List<(Vector3 c, float r)> lightRooms = new List<(Vector3, float)>();
     }
 
     static readonly Site[] Sites =
     {
-        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 130, build = BuildWarren },
-        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 140, build = BuildDescent },
-        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 120, build = BuildHall },
+        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 45, build = BuildWarren },
+        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 50, build = BuildDescent },
+        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 40, build = BuildHall },
     };
 
     // ── Layouts: a grown tunnel network per cave ─────────────────────────────
@@ -172,7 +174,7 @@ public static class MoonCaveInstaller
             float rho = Mathf.Sqrt(m.x * m.x + m.z * m.z);
             if (rho < P.sectorMarginM * 1.2f) return false;
             float marginDeg = Mathf.Asin(Mathf.Clamp01(P.sectorMarginM / rho)) * Mathf.Rad2Deg;
-            return Mathf.Abs(Mathf.DeltaAngle(az, mouthAz)) <= P.sectorHalfDeg - marginDeg;
+            return Mathf.Abs(Mathf.DeltaAngle(az, mouthAz)) <= site.sectorHalfDeg - marginDeg;
         }
         bool SlopeOk(Node a, Node b)
         {
@@ -464,7 +466,25 @@ public static class MoonCaveInstaller
             bool allOk = true;
             var clock = System.Diagnostics.Stopwatch.StartNew();
 
-            // 3. Per site: frame, heightmap, build.
+            // 3a. Put each mouth in the biggest crater of its third of the moon
+            //     (Sam: "make something to look for craters, put the entrances
+            //     in the craters"). A crater = a patch whose surface radius is
+            //     well below the average of the 14° around it.
+            ChooseCraterSites(mf.sharedMesh, log);
+            for (int i = 0; i < Sites.Length; i++)
+            {
+                float nearest = 360f;
+                for (int j = 0; j < Sites.Length; j++)
+                {
+                    if (i == j) continue;
+                    float ai = Mathf.Atan2(Sites[i].dir.z, Sites[i].dir.x) * Mathf.Rad2Deg;
+                    float aj = Mathf.Atan2(Sites[j].dir.z, Sites[j].dir.x) * Mathf.Rad2Deg;
+                    nearest = Mathf.Min(nearest, Mathf.Abs(Mathf.DeltaAngle(ai, aj)));
+                }
+                Sites[i].sectorHalfDeg = nearest * 0.5f - 4f;
+            }
+
+            // 3b. Per site: frame, heightmap, build.
             foreach (var site in Sites)
             {
                 Vector3 dirW = moonT.TransformDirection(site.dir);
@@ -515,7 +535,8 @@ public static class MoonCaveInstaller
                 log.AppendLine($"[MoonCaves]   timing: heightmap done at {tHeight:0}s, network grown at {tGrow:0}s, solid built at {clock.Elapsed.TotalSeconds:0}s since install began.");
                 float totalLen = 0f; foreach (var sg in site.layout.segments) totalLen += (sg.b - sg.a).magnitude;
                 float deepest = 0f; foreach (var sg in site.layout.segments) { deepest = Mathf.Max(deepest, site.R - (sg.a - new Vector3(0f, -site.R, 0f)).magnitude); deepest = Mathf.Max(deepest, site.R - (sg.b - new Vector3(0f, -site.R, 0f)).magnitude); }
-                log.AppendLine($"[MoonCaves] Cave {site.name} ({site.title}, {site.recipe}) at moon-local {site.localPos} (R={site.R:0.0}): {site.layout.segments.Count} legs, {totalLen:0} m of tunnel, {site.layout.rooms.Count} rooms, deepest {deepest:0.0} m; terrain within 16 m of the mouth spans {minH:0.0}..{maxH:0.0} m.");
+                log.AppendLine($"[MoonCaves] Cave {site.name} ({site.title}, {site.recipe}) at moon-local {site.localPos} (R={site.R:0.0}), {site.craterNote}, wedge ±{site.sectorHalfDeg:0}°: {site.layout.segments.Count} legs, {totalLen:0} m of tunnel, {site.layout.rooms.Count} rooms, deepest {deepest:0.0} m; terrain within 16 m of the mouth spans {minH:0.0}..{maxH:0.0} m.");
+                log.AppendLine($"[MoonCaves]   features: {res.featureReport}.");
                 if (!res.ok)
                 {
                     log.AppendLine($"[MoonCaves]   FAILED: {res.failure}");
@@ -574,6 +595,82 @@ public static class MoonCaveInstaller
         {
             Object.DestroyImmediate(mc);
         }
+    }
+
+    // ── Craters ──────────────────────────────────────────────────────────────
+
+    /// Scores the moon's surface for craters (radius well below the average of
+    /// the ~14° around it) and moves each site's mouth direction to the best
+    /// crater in that site's third of the moon, on the upper hemisphere.
+    static void ChooseCraterSites(Mesh terrain, System.Text.StringBuilder log)
+    {
+        var verts = terrain.vertices;
+        if (verts == null || verts.Length < 1000) { log.AppendLine("[MoonCaves] Crater search skipped — no terrain vertices."); return; }
+        const int Lat = 60, Lon = 120;                      // 3° cells
+        var sum = new double[Lat * Lon]; var cnt = new int[Lat * Lon];
+        var sumDir = new Vector3[Lat * Lon];
+        int Cell(Vector3 d, out int la, out int lo)
+        {
+            la = Mathf.Clamp((int)((Mathf.Asin(Mathf.Clamp(d.y, -1f, 1f)) + Mathf.PI * 0.5f) / Mathf.PI * Lat), 0, Lat - 1);
+            lo = Mathf.Clamp((int)((Mathf.Atan2(d.z, d.x) + Mathf.PI) / (2f * Mathf.PI) * Lon), 0, Lon - 1);
+            return la * Lon + lo;
+        }
+        for (int i = 0; i < verts.Length; i++)
+        {
+            float r = verts[i].magnitude;
+            if (r < 1e-4f) continue;
+            int c = Cell(verts[i] / r, out _, out _);
+            sum[c] += r; cnt[c]++; sumDir[c] += verts[i] / r;
+        }
+        // Per cell: mean radius and mean radius of the neighbourhood (±4 cells ≈ 12°).
+        float Mean(int c) => cnt[c] > 0 ? (float)(sum[c] / cnt[c]) : float.NaN;
+        var score = new float[Lat * Lon];
+        for (int la = 0; la < Lat; la++)
+            for (int lo = 0; lo < Lon; lo++)
+            {
+                int c = la * Lon + lo;
+                float m = Mean(c);
+                if (float.IsNaN(m)) { score[c] = float.NegativeInfinity; continue; }
+                double ns = 0; int nc = 0;
+                for (int dl = -4; dl <= 4; dl++)
+                    for (int dn = -4; dn <= 4; dn++)
+                    {
+                        if (dl == 0 && dn == 0) continue;
+                        int l2 = la + dl; if (l2 < 0 || l2 >= Lat) continue;
+                        int n2 = ((lo + dn) % Lon + Lon) % Lon;
+                        int c2 = l2 * Lon + n2;
+                        if (cnt[c2] == 0) continue;
+                        ns += sum[c2]; nc += cnt[c2];
+                    }
+                if (nc == 0) { score[c] = float.NegativeInfinity; continue; }
+                score[c] = (float)(ns / nc) - m;                  // metres (×radius) below the surroundings
+            }
+        foreach (var site in Sites)
+        {
+            float siteAz = Mathf.Atan2(site.dir.z, site.dir.x) * Mathf.Rad2Deg;
+            int best = -1; float bestScore = float.NegativeInfinity;
+            for (int la = 0; la < Lat; la++)
+                for (int lo = 0; lo < Lon; lo++)
+                {
+                    int c = la * Lon + lo;
+                    if (cnt[c] == 0 || float.IsNegativeInfinity(score[c])) continue;
+                    Vector3 d = sumDir[c].normalized;
+                    // 5°..30° north: off the moon base, and low enough that the
+                    // cave's wedge of the moon stays wide (near the pole the
+                    // wedge narrows to nothing and the cave cannot grow — B got
+                    // 26 m of tunnel at 44° north).
+                    if (d.y < 0.08f || d.y > 0.5f) continue;
+                    float az = Mathf.Atan2(d.z, d.x) * Mathf.Rad2Deg;
+                    if (Mathf.Abs(Mathf.DeltaAngle(az, siteAz)) > 22f) continue; // mouths stay ~120° apart
+                    if (score[c] > bestScore) { bestScore = score[c]; best = c; }
+                }
+            if (best < 0) { site.craterNote = "no crater found, kept the default site"; continue; }
+            site.dir = sumDir[best].normalized;
+            // The mesh is in unit-sphere-ish units scaled by the body radius at
+            // runtime; report the depth in metres for a 51 m moon.
+            site.craterNote = $"crater floor {bestScore * 51f:0.0} m below its surroundings at dir {site.dir}";
+        }
+        log.AppendLine("[MoonCaves] Crater search: " + string.Join("; ", System.Array.ConvertAll(Sites, s => s.name + ": " + s.craterNote)));
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────
@@ -722,6 +819,9 @@ public static class MoonCaveInstaller
         var seeder = Ensure<CaveCrystalSeeder>(root);
         seeder.crystalCount = site.crystals;
         seeder.seed = 90210 + site.name[0];
+        seeder.deepFraction = 0.5f;
+        seeder.glowLightEvery = 5;
+        seeder.glowMaterial = CaveRockTextures.GetCrystalGlowMaterial();
         GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);
 
         // Rock
@@ -802,6 +902,25 @@ public static class MoonCaveInstaller
         volume.mouthBubbleRadius = 0f;
         volume.oceanCutoutPadding = 1.15f;
         volume.affectsOcean = false;      // the moon has no ocean
+        // Path distance from the mouth per capsule (segments first, then rooms
+        // — the same order as the arrays above).
+        var ctxDist = new CaveSolid.Layout { segments = L.segments, rooms = L.rooms, style = L.style, ground = L.ground, bodyRadius = L.bodyRadius };
+        float[] segDist = CaveSolid.SegmentPathDistances(ctxDist);
+        var dist = new List<float>(segDist);
+        foreach (var room in L.rooms)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < L.segments.Count; i++)
+            {
+                float d = Mathf.Min((L.segments[i].a - room.centre).magnitude, (L.segments[i].b - room.centre).magnitude);
+                if (d < best) { best = d; }
+            }
+            float rd = 0f;
+            for (int i = 0; i < L.segments.Count; i++)
+                if (Mathf.Min((L.segments[i].a - room.centre).magnitude, (L.segments[i].b - room.centre).magnitude) <= best + 0.01f) { rd = segDist[i]; break; }
+            dist.Add(rd);
+        }
+        volume.capsuleDist = dist.ToArray();
     }
 
     static T Ensure<T>(GameObject go) where T : Component

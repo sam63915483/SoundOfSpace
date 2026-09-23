@@ -1,16 +1,15 @@
-// Cave rock = MOON ROCK. This reproduces the moon terrain's own surface rule
-// (Celestial/Shaders/Surface/MoonA.shader, read-only) so a cave looks like it
-// was dug out of the moon and not dressed in a different stone:
-//   • colour blends between the moon's two flat colours by height-noise,
-//   • steep faces take the moon's steep colour (remapped over 0..0.3 of
-//     1 - n·up, exactly as MoonA does),
-//   • the same two normal maps (flat = craters, steep = rock), triplanar,
-//     blended by steepness, at the moon's strength.
-// The generator stores per vertex: R = noise, G = steepness, B = 1,
-// A = SKY EXPOSURE. Exposure scales the directional light (forward base pass)
-// and ambient, so the interior is dark; point/spot lights (the flashlight)
-// are not scaled. Inside, the steep colour is lifted a little so walls read
-// as dark rock under a torch rather than as nothing.
+// Cave rock. Near the mouth it IS moon rock — the same colours, the same two
+// normal maps and the same steepness rule as the moon's own terrain shader
+// (Celestial/Shaders/Surface/MoonA.shader, read-only), so the sinkhole is made
+// of the crater it sits in. Going in, it fades to the cave's own stone: the
+// procedural cave albedo + normal (cracks, strata, dripstone) — a cave is
+// sheltered, nothing hits it, so it has no little craters.
+//
+// Per vertex (written by CaveSolid): R = noise, G = steepness (0..1 over
+// 0..0.3 of 1 - n·up, as MoonA remaps it), B = path distance from the mouth
+// (0 at the mouth → 1 at ~22 m in), A = sky exposure.
+// Exposure scales the directional light (forward base pass) and ambient so the
+// interior is dark; point/spot lights (flashlight, crystal glow) are not scaled.
 //
 // Built-in RP, forward only. Referenced by the Cave_Rock_* material assets so
 // it is included in builds (never rely on Shader.Find for this).
@@ -18,16 +17,21 @@ Shader "Custom/CaveRock"
 {
     Properties
     {
-        _Color ("Tint", Color) = (1,1,1,1)
-        _MainTex ("Noise (triplanar)", 2D) = "gray" {}
+        _Color ("Tint (cave stone)", Color) = (1,1,1,1)
+        _MainTex ("Cave albedo (triplanar)", 2D) = "gray" {}
+        _BumpMap ("Cave normal RG=xy (triplanar)", 2D) = "bump" {}
+        _Tiling ("Cave: metres per tile", Float) = 3.5
+        _BumpScale ("Cave normal strength", Range(0, 3)) = 1.2
         _NormalFlat ("Moon normal map: flat", 2D) = "bump" {}
         _NormalSteep ("Moon normal map: steep", 2D) = "bump" {}
-        _Tiling ("Metres per tile", Float) = 2.5
-        _NormalStrength ("Normal strength (moon uses 0.589)", Range(0, 1)) = 0.589
+        _MoonTiling ("Moon: metres per tile", Float) = 2.5
+        _NormalStrength ("Moon normal strength (moon uses 0.589)", Range(0, 1)) = 0.589
         _FlatColA ("Moon flat colour A", Color) = (1, 1, 1, 1)
         _FlatColB ("Moon flat colour B", Color) = (0.736, 0.736, 0.736, 1)
         _SteepCol ("Moon steep colour", Color) = (0.0577, 0.0469, 0.0849, 1)
-        _SteepColInside ("Steep colour inside the cave", Color) = (0.24, 0.22, 0.27, 1)
+        _MoonBrightness ("Moon brightness match", Range(0.5, 1.2)) = 0.86
+        _FadeStart ("Fade to cave stone: start (path 0..1)", Range(0, 1)) = 0.12
+        _FadeEnd ("Fade to cave stone: end (path 0..1)", Range(0, 1)) = 0.75
         _ExposureFloor ("Minimum daylight inside", Range(0, 0.3)) = 0.03
         _ExposurePower ("Daylight falloff", Range(0.5, 3)) = 1.6
     }
@@ -41,14 +45,13 @@ Shader "Custom/CaveRock"
         #pragma target 3.0
 
         sampler2D _MainTex;
+        sampler2D _BumpMap;
         sampler2D _NormalFlat;
         sampler2D _NormalSteep;
         fixed4 _Color;
-        float _Tiling;
-        float _NormalStrength;
-        fixed4 _FlatColA, _FlatColB, _SteepCol, _SteepColInside;
-        float _ExposureFloor;
-        float _ExposurePower;
+        float _Tiling, _BumpScale, _MoonTiling, _NormalStrength, _MoonBrightness, _FadeStart, _FadeEnd;
+        fixed4 _FlatColA, _FlatColB, _SteepCol;
+        float _ExposureFloor, _ExposurePower;
 
         struct Input
         {
@@ -98,18 +101,20 @@ Shader "Custom/CaveRock"
             gi = UnityGI_Base(data, 1.0, s.Normal);
         }
 
-        // Triplanar tangent-space normal from a normal map, whiteout blend,
-        // returned in object space.
-        float3 TriplanarNormal (sampler2D tex, float3 p, float3 n, float3 bw, float3 axisSign)
+        // Whiteout-blended triplanar normal, returned in object space.
+        float3 TriplanarNormal (float3 tx, float3 ty, float3 tz, float3 n, float3 bw, float3 axisSign)
         {
-            float3 tx = UnpackNormal(tex2D(tex, p.zy));
-            float3 ty = UnpackNormal(tex2D(tex, p.xz));
-            float3 tz = UnpackNormal(tex2D(tex, p.xy));
             tx.xy *= axisSign.x; ty.xy *= axisSign.y; tz.xy *= axisSign.z;
             tx = float3(tx.xy + n.zy, abs(tx.z) * n.x);
             ty = float3(ty.xy + n.xz, abs(ty.z) * n.y);
             tz = float3(tz.xy + n.xy, abs(tz.z) * n.z);
             return normalize(tx.zyx * bw.x + ty.xzy * bw.y + tz.xyz * bw.z);
+        }
+
+        float3 RawNormal (float2 rg, float scale)
+        {
+            float2 xy = (rg * 2.0 - 1.0) * scale;
+            return float3(xy, sqrt(saturate(1.0 - dot(xy, xy))));
         }
 
         void surf (Input IN, inout SurfaceOutputCave o)
@@ -118,28 +123,31 @@ Shader "Custom/CaveRock"
             float3 bw = pow(abs(n), 4.0);
             bw /= max(1e-4, bw.x + bw.y + bw.z);
             float3 axisSign = sign(n);
-            float3 p = IN.objPos / _Tiling;
 
-            float noiseTex = dot(tex2D(_MainTex, p.xz * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.y
-                           + dot(tex2D(_MainTex, p.zy * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.x
-                           + dot(tex2D(_MainTex, p.xy * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.z;
             float steep = saturate(IN.color.g);
             float exposure = saturate(IN.color.a);
+            // 1 = moon rock (at the mouth), 0 = cave stone (deep inside).
+            float moon = 1.0 - smoothstep(_FadeStart, _FadeEnd, IN.color.b);
 
-            // The moon's colour rule: flat A → flat B by height-noise, then the
-            // steep colour on slopes.
-            float blend = smoothstep(0.35, 0.65, IN.color.r * 0.6 + noiseTex * 0.6 + steep * 0.25);
+            // ── moon rock ──
+            float3 pm = IN.objPos / _MoonTiling;
+            float noiseTex = dot(tex2D(_MainTex, pm.xz * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.y
+                           + dot(tex2D(_MainTex, pm.zy * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.x
+                           + dot(tex2D(_MainTex, pm.xy * 0.37).rgb, float3(0.33, 0.34, 0.33)) * bw.z;
+            float blend = smoothstep(0.25, 0.6, IN.color.r * 0.6 + noiseTex * 0.6 + steep * 0.25);
             fixed3 flat = lerp(_FlatColA.rgb, _FlatColB.rgb, blend);
-            float inside = 1.0 - smoothstep(0.2, 0.6, exposure);
-            fixed3 steepCol = lerp(_SteepCol.rgb, _SteepColInside.rgb, inside);
-            fixed3 alb = lerp(flat, steepCol, steep);
-            o.Albedo = alb * _Color.rgb;
+            fixed3 moonAlb = lerp(flat, _SteepCol.rgb, steep) * _MoonBrightness;
+            float3 nFlat = TriplanarNormal(UnpackNormal(tex2D(_NormalFlat, pm.zy)), UnpackNormal(tex2D(_NormalFlat, pm.xz)), UnpackNormal(tex2D(_NormalFlat, pm.xy)), n, bw, axisSign);
+            float3 nSteep = TriplanarNormal(UnpackNormal(tex2D(_NormalSteep, pm.zy)), UnpackNormal(tex2D(_NormalSteep, pm.xz)), UnpackNormal(tex2D(_NormalSteep, pm.xy)), n, bw, axisSign);
+            float3 moonN = normalize(lerp(n, normalize(lerp(nFlat, nSteep, steep)), _NormalStrength));
 
-            // The moon's normal rule: flat map on the flat, steep map on slopes.
-            float3 nFlat = TriplanarNormal(_NormalFlat, p, n, bw, axisSign);
-            float3 nSteep = TriplanarNormal(_NormalSteep, p, n, bw, axisSign);
-            float3 objN = normalize(lerp(nFlat, nSteep, steep));
-            objN = normalize(lerp(n, objN, _NormalStrength));
+            // ── cave stone ──
+            float3 pc = IN.objPos / _Tiling;
+            fixed3 caveAlb = (tex2D(_MainTex, pc.zy).rgb * bw.x + tex2D(_MainTex, pc.xz).rgb * bw.y + tex2D(_MainTex, pc.xy).rgb * bw.z) * _Color.rgb;
+            float3 caveN = TriplanarNormal(RawNormal(tex2D(_BumpMap, pc.zy).rg, _BumpScale), RawNormal(tex2D(_BumpMap, pc.xz).rg, _BumpScale), RawNormal(tex2D(_BumpMap, pc.xy).rg, _BumpScale), n, bw, axisSign);
+
+            fixed3 alb = lerp(caveAlb, moonAlb, moon);
+            float3 objN = normalize(lerp(caveN, moonN, moon));
 
             // Object space → tangent space, which is what the surface shader wants.
             float3 T = IN.objTangent.xyz;
@@ -148,6 +156,7 @@ Shader "Custom/CaveRock"
             float3 B = cross(n, T) * (IN.objTangent.w < 0 ? -1.0 : 1.0);
             o.Normal = normalize(float3(dot(objN, T), dot(objN, B), dot(objN, n)));
 
+            o.Albedo = alb;
             o.Exposure = _ExposureFloor + (1.0 - _ExposureFloor) * pow(exposure, _ExposurePower);
             o.Emission = 0;
             o.Specular = 0;

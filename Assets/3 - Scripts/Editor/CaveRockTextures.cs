@@ -57,20 +57,45 @@ public static class CaveRockTextures
         // the same two normal maps the moon's own material uses (read from
         // Constant Companion.mat + Shading.asset, 2026-09-22). _MainTex is only
         // a noise source now, like the moon's own noise texture.
+        // Moon rock at the mouth (the moon's own colours + normal maps), fading
+        // to the cave's own stone (procedural albedo + normal per recipe) inside.
         mat.SetTexture("_MainTex", albedo);
+        mat.SetTexture("_BumpMap", normal);
+        mat.SetFloat("_Tiling", recipe == CaveSolid.Recipe.Dripstone ? 4.5f : 3.5f);
+        mat.SetFloat("_BumpScale", recipe == CaveSolid.Recipe.Dripstone ? 0.8f : 1.2f);
         mat.SetTexture("_NormalFlat", AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/5 - External Imports/Celestial Body/Textures/Normals/Craters.tif"));
         mat.SetTexture("_NormalSteep", AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/5 - External Imports/Celestial Body/Textures/Normals/Rock1.jpg"));
-        mat.SetFloat("_Tiling", 2.5f);                 // the moon tiles its normals every ~2.5 m of surface
+        mat.SetFloat("_MoonTiling", 2.5f);             // the moon tiles its normals every ~2.5 m of surface
         mat.SetFloat("_NormalStrength", 0.589f);       // the moon's _NormalMapStrength
         mat.SetColor("_FlatColA", new Color(1f, 1f, 1f));
         mat.SetColor("_FlatColB", new Color(0.735849f, 0.735849f, 0.735849f));
         mat.SetColor("_SteepCol", new Color(0.057654828f, 0.046858326f, 0.084905684f));
-        mat.SetColor("_SteepColInside", new Color(0.24f, 0.22f, 0.27f));
+        mat.SetFloat("_MoonBrightness", 0.86f);        // the moon reads a touch darker than its raw colours (Sam: "a bit lighter")
+        mat.SetFloat("_FadeStart", 0.12f);
+        mat.SetFloat("_FadeEnd", 0.75f);
         mat.SetFloat("_ExposureFloor", 0.03f);
         mat.SetFloat("_ExposurePower", 1.6f);
-        mat.SetColor("_Color", Color.white);
+        mat.SetColor("_Color", recipe == CaveSolid.Recipe.Dripstone ? new Color(1.0f, 0.92f, 0.82f)
+                             : recipe == CaveSolid.Recipe.Collapse ? new Color(0.85f, 0.85f, 0.9f) : Color.white);
         mat.enableInstancing = true;
         EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
+    /// The crystal prefab's material with emission switched on, so CrystalGlow
+    /// can pulse it. Same texture, same shader; only the keyword differs.
+    public static Material GetCrystalGlowMaterial()
+    {
+        string path = $"{Folder}/CaveCrystal_Glow.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat != null) return mat;
+        var src = AssetDatabase.LoadAssetAtPath<Material>("Assets/5 - External Imports/Nature & Trees/Stylized Crystal/Mesh/Materials/crystal_17_2.mat");
+        mat = src != null ? new Material(src) : new Material(Shader.Find("Standard"));
+        mat.name = "CaveCrystal_Glow";
+        mat.EnableKeyword("_EMISSION");
+        mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+        mat.SetColor("_EmissionColor", new Color(0.35f, 0.62f, 1f) * 0.6f);
+        AssetDatabase.CreateAsset(mat, path);
         return mat;
     }
 

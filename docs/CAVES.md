@@ -51,6 +51,17 @@ floors clear of small spikes; cave crystals fixed (the prefab is authored at
 scale 17 — the seeder now multiplies by it like CrystalSpawner does, and adds
 the convex MeshCollider so they can be mined).
 
+**Round 4 (same day):** mouths go in the biggest craters — the installer
+scores the terrain preview for craters (`ChooseCraterSites`: 3° cells, radius
+vs the 12° neighbourhood, best per third of the moon, 5°-46° north) and each
+cave's wedge is half the angle to its nearest neighbour mouth. The material is
+MOON ROCK at the mouth fading to the cave's own stone inside (vertex B = path
+metres from the mouth / 22; `_FadeStart/_FadeEnd`), `_MoonBrightness` 0.86.
+Crystals: deeper half only (`CaveVolume.capsuleDist`), seated on the surface
+with the spawner's mesh-bottom maths, `CaveCrystal_Glow.mat` + `CrystalGlow`
+(pulsing emission, a small blue light on every 5th). Stalactites and columns in
+every recipe; the log's `features:` line says how many were actually placed.
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

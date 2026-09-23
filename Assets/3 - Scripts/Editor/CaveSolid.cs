@@ -124,7 +124,7 @@ public static class CaveSolid
                     s.mouth = MouthKind.Eyebrow; s.seed = 101;
                     s.noiseAmp = 0.9f; s.noiseScale = 0.14f; s.detailWeight = 0.6f; s.warpStrength = 2.5f;
                     s.strataAmp = 0.5f; s.strataFreq = 0.55f; s.ceilingRoughen = 0.4f; s.floorNoise = 0.2f;
-                    s.stalactites = 10; s.stalagmites = 2; s.columns = 0; s.boulders = 5; s.blocks = 2; s.rubble = 0;
+                    s.stalactites = 26; s.stalagmites = 2; s.columns = 4; s.boulders = 5; s.blocks = 2; s.rubble = 0;
                     s.mouthBoulders = 4;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.rockTint = new Color(0.84f, 0.85f, 0.89f); s.floorTint = new Color(0.95f, 0.94f, 0.90f);
@@ -135,7 +135,7 @@ public static class CaveSolid
                     s.noiseAmp = 0.7f; s.noiseScale = 0.11f; s.detailWeight = 0.45f; s.warpStrength = 3.5f;
                     s.verticalStretch = 0.45f;
                     s.strataAmp = 0.15f; s.strataFreq = 0.3f; s.ceilingRoughen = 0.3f; s.floorNoise = 0.15f;
-                    s.stalactites = 60; s.stalagmites = 7; s.columns = 5; s.boulders = 2; s.blocks = 0; s.rubble = 0;
+                    s.stalactites = 60; s.stalagmites = 7; s.columns = 7; s.boulders = 2; s.blocks = 0; s.rubble = 0;
                     s.mouthBoulders = 3;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 0.6f;
@@ -146,7 +146,7 @@ public static class CaveSolid
                     s.mouth = MouthKind.Collapse; s.seed = 303;
                     s.noiseAmp = 1.0f; s.noiseScale = 0.16f; s.detailWeight = 0.7f; s.warpStrength = 2.0f;
                     s.strataAmp = 0.3f; s.strataFreq = 0.4f; s.ceilingRoughen = 0.7f; s.floorNoise = 0.3f;
-                    s.stalactites = 6; s.stalagmites = 0; s.columns = 3; s.boulders = 8; s.blocks = 5; s.rubble = 0;
+                    s.stalactites = 18; s.stalagmites = 0; s.columns = 4; s.boulders = 8; s.blocks = 5; s.rubble = 0;
                     s.mouthBoulders = 5;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 1.0f;
@@ -209,6 +209,7 @@ public static class CaveSolid
         public Vector3 trimShallowestAt;
         public bool mouthOk = true, roofOk = true;
         public string mouthReport = "", roofReport = "";
+        public string featureReport = "";
         public float exposureMean;
         public double seconds;
         public bool ok;
@@ -401,6 +402,7 @@ public static class CaveSolid
         float mean = 0f; for (int i = 0; i < exposure.Length; i++) mean += exposure[i];
         R.exposureMean = exposure.Length > 0 ? mean / exposure.Length : 0f;
         Color[] colours = ctx.VertexColours(v, n, exposure);
+        R.featureReport = ctx.FeatureReport;
 
         int[] kept = ctx.TrimBuried(v, tri, out R.trimOpenEdges, out R.trimShallowest);
         R.trimShallowestAt = ctx.shallowestAt;
@@ -413,6 +415,9 @@ public static class CaveSolid
         R.ok = true;
         return R;
     }
+
+    /// Path distance (metres from the mouth) per segment of a layout.
+    public static float[] SegmentPathDistances(Layout L) => new Ctx(L).SegmentPathDistance();
 
     // ── Context: the field for one layout ────────────────────────────────────
 
@@ -900,9 +905,9 @@ public static class CaveSolid
             for (int i = 0; i < st.stalactites; i++)
             {
                 var hst = RandomHost();
-                float side = Rand(-0.75f, 0.75f);
+                float side = Rand(-0.85f, 0.85f);
                 Vector3 dir = (hst.vert * Mathf.Cos(side) + hst.lat * Mathf.Sin(side)).normalized;
-                if (!WallPoint(hst.c, dir, hst.r * hst.h * 2.2f, out Vector3 wp)) continue;
+                if (!WallPoint(hst.c, dir, hst.r * hst.h * 3.0f, out Vector3 wp)) continue;
                 float floorY = -hst.h * hst.r * FloorSquash;           // in vert units from the axis
                 float wpV = Vector3.Dot(wp - hst.c, hst.vert);
                 float maxLen = Mathf.Max(0.5f, (wpV - floorY) - 2.4f);
@@ -968,6 +973,7 @@ public static class CaveSolid
                 float r = Rand(0.45f, 1.0f);
                 mouth.Add(new Feature { kind = FeatureKind.Ellipsoid, a = new Vector3(x, g - r * 0.3f, z), scale = new Vector3(r * Rand(0.8f, 1.3f), r * Rand(0.7f, 1.0f), r * Rand(0.8f, 1.3f)), mouth = true });
             }
+            ReportFeatures();
             if (st.mouth == MouthKind.Collapse)
             {
                 // Rubble spilling out of the mouth itself.
@@ -982,6 +988,14 @@ public static class CaveSolid
         }
 
         int CountMouth() => mouth.Count;
+
+        void ReportFeatures()
+        {
+            int cones = 0, ell = 0, caps = 0, boxes = 0;
+            foreach (var f in interior)
+                switch (f.kind) { case FeatureKind.Cone: cones++; break; case FeatureKind.Ellipsoid: ell++; break; case FeatureKind.Capsule: caps++; break; default: boxes++; break; }
+            _featureReport = $"placed {cones} stalactites+stalagmites (asked {st.stalactites}+{st.stalagmites}), {caps} columns (asked {st.columns}), {ell} boulders, {boxes} blocks, {mouth.Count} mouth boulders";
+        }
 
         public Bounds ComputeBounds()
         {
@@ -1209,16 +1223,90 @@ public static class CaveSolid
         ///   exactly as the moon remaps it), B = 1, A = sky exposure.
         public Color[] VertexColours(Vector3[] v, Vector3[] n, float[] exposure)
         {
+            float[] path = PathDistances(v);
             var c = new Color[v.Length];
             for (int i = 0; i < v.Length; i++)
             {
                 Vector3 up = Up(v[i]);
                 float steep = Mathf.Clamp01((1f - Vector3.Dot(n[i], up)) / 0.3f);
                 float noise = Mathf.Clamp01(0.5f + Octave(v[i], 0.35f, 4.4f) * 1.6f);
-                c[i] = new Color(noise, steep, 1f, Mathf.Clamp01(exposure[i]));
+                c[i] = new Color(noise, steep, Mathf.Clamp01(path[i] / PathFadeMetres), Mathf.Clamp01(exposure[i]));
             }
             return c;
         }
+
+        /// Metres of tunnel between the mouth and each vertex: BFS over the
+        /// passage graph from the first segment's start, then each vertex takes
+        /// its nearest passage's distance. Drives the moon-rock → cave-stone
+        /// fade in the shader (vertex B) and the crystal seeder's "deeper half".
+        public const float PathFadeMetres = 22f;
+
+        public float[] SegmentPathDistance()
+        {
+            int m = segs.Count;
+            var pts = new List<Vector3>();
+            int Node(Vector3 p)
+            {
+                for (int i = 0; i < pts.Count; i++) if ((pts[i] - p).sqrMagnitude < 0.25f) return i;
+                pts.Add(p); return pts.Count - 1;
+            }
+            var segNode = new (int a, int b)[m];
+            for (int i = 0; i < m; i++) segNode[i] = (Node(segs[i].a), Node(segs[i].b));
+            var adj = new List<(int to, float len)>[pts.Count];
+            for (int i = 0; i < pts.Count; i++) adj[i] = new List<(int, float)>();
+            for (int i = 0; i < m; i++)
+            {
+                float len = (segs[i].b - segs[i].a).magnitude;
+                adj[segNode[i].a].Add((segNode[i].b, len));
+                adj[segNode[i].b].Add((segNode[i].a, len));
+            }
+            var dist = new float[pts.Count];
+            for (int i = 0; i < dist.Length; i++) dist[i] = float.MaxValue;
+            if (m == 0) return new float[0];
+            dist[segNode[0].a] = 0f;
+            // Dijkstra, tiny graph.
+            var done = new bool[pts.Count];
+            for (int it = 0; it < pts.Count; it++)
+            {
+                int best = -1; float bd = float.MaxValue;
+                for (int i = 0; i < pts.Count; i++) if (!done[i] && dist[i] < bd) { bd = dist[i]; best = i; }
+                if (best < 0) break;
+                done[best] = true;
+                foreach (var (to, len) in adj[best]) if (dist[best] + len < dist[to]) dist[to] = dist[best] + len;
+            }
+            var segDist = new float[m];
+            for (int i = 0; i < m; i++)
+            {
+                float da = dist[segNode[i].a], db = dist[segNode[i].b];
+                if (da == float.MaxValue) da = db; if (db == float.MaxValue) db = da;
+                segDist[i] = Mathf.Min(da, db) + 0.5f * (segs[i].b - segs[i].a).magnitude;
+            }
+            return segDist;
+        }
+
+        float[] PathDistances(Vector3[] v)
+        {
+            float[] segDist = SegmentPathDistance();
+            var outD = new float[v.Length];
+            if (segDist.Length == 0) return outD;
+            for (int i = 0; i < v.Length; i++)
+            {
+                float best = float.MaxValue, bestD = 0f;
+                for (int s = 0; s < segs.Count; s++)
+                {
+                    Vector3 ab = segs[s].b - segs[s].a;
+                    float l2 = ab.sqrMagnitude;
+                    float t = l2 < 1e-6f ? 0f : Mathf.Clamp01(Vector3.Dot(v[i] - segs[s].a, ab) / l2);
+                    float d = (v[i] - (segs[s].a + ab * t)).sqrMagnitude;
+                    if (d < best) { best = d; bestD = segDist[s] - 0.5f * Mathf.Sqrt(l2) + t * Mathf.Sqrt(l2); }
+                }
+                outD[i] = Mathf.Max(0f, bestD);
+            }
+            return outD;
+        }
+
+        public string FeatureReport => _featureReport;
+        string _featureReport = "";
 
         // ── trim ──────────────────────────────────────────────────────────
 

@@ -44,9 +44,13 @@ Material:
     - _BumpScale: 1.2
     - _ExposureFloor: 0.03
     - _ExposurePower: 1.6
+    - _FadeEnd: 0.75
+    - _FadeStart: 0.12
     - _MoonBlend: 0.9
+    - _MoonBrightness: 0.86
+    - _MoonTiling: 2.5
     - _NormalStrength: 0.589
-    - _Tiling: 2.5
+    - _Tiling: 3.5
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _FlatColA: {r: 1, g: 1, b: 1, a: 1}
