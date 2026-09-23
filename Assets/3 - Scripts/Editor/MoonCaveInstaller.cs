@@ -302,21 +302,27 @@ public static class MoonCaveInstaller
                 // Straight down is a 90° shaft. Approach the core at ≤ 33°:
                 // run sideways far enough for the drop, in one of 12 directions.
                 Vector3 up = n.p.normalized;
-                float drop = n.p.magnitude - (CoreCavernRadius + 0.5f);
-                float run = drop / Mathf.Tan(33f * Mathf.Deg2Rad);
                 Frame(up, out Vector3 t0, out Vector3 t1);
                 bool linked = false;
+                // Sweep the landing point around the core sphere: 12 directions
+                // × angular offsets from 20° to 85°, first one that is walkable
+                // (measured, not assumed) and clear of other passages wins.
                 for (int d = 0; d < 12 && !linked; d++)
                 {
                     float ang = d * 30f * Mathf.Deg2Rad;
                     Vector3 side = (t0 * Mathf.Cos(ang) + t1 * Mathf.Sin(ang)).normalized;
-                    Vector3 onCore = (n.p + side * run).normalized * (CoreCavernRadius + 0.5f);
-                    if (Slope(n.p, onCore) > 36f) continue;
-                    if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
-                    int ci2 = Add(new Node { p = onCore, r = 2.4f, w = 1.2f, h = 1.0f });
-                    Link(order[k], ci2); Link(ci2, net.coreNode);
-                    net.coreLinks++;
-                    linked = true;
+                    for (float theta = 20f; theta <= 85f && !linked; theta += 5f)
+                    {
+                        Vector3 dir = (up * Mathf.Cos(theta * Mathf.Deg2Rad) + side * Mathf.Sin(theta * Mathf.Deg2Rad)).normalized;
+                        Vector3 onCore = dir * (CoreCavernRadius + 0.5f);
+                        if (Slope(n.p, onCore) > 36f) continue;
+                        if ((onCore - n.p).magnitude > 30f) continue;
+                        if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
+                        int ci2 = Add(new Node { p = onCore, r = 2.4f, w = 1.2f, h = 1.0f });
+                        Link(order[k], ci2); Link(ci2, net.coreNode);
+                        net.coreLinks++;
+                        linked = true;
+                    }
                 }
             }
         }
