@@ -36,7 +36,9 @@ Material:
     - _BumpScale: 0.8
     - _ExposureFloor: 0.03
     - _ExposurePower: 1.6
+    - _MoonBlend: 0.9
     - _Tiling: 4.5
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _MoonColor: {r: 0.78, g: 0.78, b: 0.78, a: 1}
   m_BuildTextureStacks: []

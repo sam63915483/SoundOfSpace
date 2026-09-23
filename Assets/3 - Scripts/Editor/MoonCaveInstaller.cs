@@ -44,7 +44,7 @@ public static class MoonCaveInstaller
     const float HeightmapHalf = 45f;
     const float HeightmapCell = 0.5f;
     const float MaxWalkSlopeDeg = 28f;   // floors flatten up to 30°; A's entrance ramp measures 27.4°
-    const float MinCaveGap = 4f;           // clear rock between two caves' walls
+    const float MinCaveGap = 1f;           // spare rock beyond both caves' 3 m walls: the two solids must simply never touch
     const float MinCoreRadius = 12f;
     const double TimeoutSeconds = 180.0;
 
@@ -61,7 +61,7 @@ public static class MoonCaveInstaller
         public Vector3 dir;          // moon-local unit direction of the mouth
         public CaveSolid.Recipe recipe;
         public int crystals;
-        public System.Func<float, CaveSolid.Layout> build;
+        public System.Func<Site, CaveSolid.Layout> build;
 
         // filled during install
         public Vector3 localPos; public Quaternion localRot; public float R;
@@ -71,27 +71,65 @@ public static class MoonCaveInstaller
 
     static readonly Site[] Sites =
     {
-        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 60, build = BuildWarren },
-        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 70, build = BuildDescent },
-        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 55, build = BuildHall },
+        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 130, build = BuildWarren },
+        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 140, build = BuildDescent },
+        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 120, build = BuildHall },
     };
 
-    // ── Layouts ──────────────────────────────────────────────────────────────
+    // ── Layouts: a grown tunnel network per cave ─────────────────────────────
+    //
+    // Sam (2026-09-22, after the first playtest): "use up much more of the
+    // inside of the moon, make the tunnels longer and sprawl out throughout the
+    // entire inside… I want players to be able to go so deep they get lost."
+    // So the hand-drawn layouts became a generator: from a fixed entrance ramp
+    // each cave grows ~40 legs by random walk — branching, descending, looping
+    // back on itself — inside its own third of the moon, keeping every leg
+    // walkable and every passage clear of every other one. Deterministic per
+    // seed: the same cave every run.
+
+    class NetParams
+    {
+        public int seed = 1;
+        public int targetLegs = 42, loops = 6;
+        public float turnMax = 75f;                 // degrees either side per leg
+        public float lenMin = 9f, lenMax = 14f;     // metres of arc per leg
+        public float descMin = -0.5f, descMax = 3.5f; // metres of depth gained per leg
+        public float branchKeep = 0.55f;            // chance a node stays open for another child
+        public float roomProb = 0.45f, roomMin = 4f, roomMax = 7f, roomW = 1.15f, roomH = 1.0f;
+        public float rMin = 2.6f, rMax = 3.6f, wMin = 1.2f, wMax = 1.5f, hMin = 0.85f, hMax = 1.05f;
+        public float minDepth = 9f, maxDepth = 30f;          // 30: keeps 12 m clear of the core with 3 m walls
+        public float alongMax = 78f, xMin = -34f, xMax = 34f, sMin = -60f;
+        public float sectorHalfDeg = 60f;                    // each cave owns a 120° wedge of the moon (about its axis)...
+        public float sectorMarginM = 10f;                    // ...minus this much rock (room + wall + half the gap) at the wedge edge, so the wedge narrows with depth
+        public float gap = 2.5f;                    // metres of rock kept between separate passages (walls are 3 m thick on top)
+        public float maxSlopeDeg = 25f;
+    }
+
+    static readonly NetParams WarrenParams = new NetParams
+    {
+        seed = 11, targetLegs = 60, loops = 10, turnMax = 80f, lenMin = 8f, lenMax = 13f,
+        descMin = -0.8f, descMax = 3.0f, branchKeep = 0.6f, roomProb = 0.45f, roomMin = 4f, roomMax = 6.5f,
+    };
+    static readonly NetParams DescentParams = new NetParams
+    {
+        seed = 22, targetLegs = 55, loops = 6, turnMax = 100f, lenMin = 9f, lenMax = 14f,
+        descMin = 0.5f, descMax = 4.2f, branchKeep = 0.45f, roomProb = 0.42f, roomMin = 4.5f, roomMax = 7.5f, roomH = 1.15f,
+    };
+    static readonly NetParams HallParams = new NetParams
+    {
+        seed = 33, targetLegs = 50, loops = 7, turnMax = 75f, lenMin = 10f, lenMax = 15f,
+        descMin = -0.5f, descMax = 3.2f, branchKeep = 0.5f, roomProb = 0.4f, roomMin = 5f, roomMax = 8f, roomW = 1.3f, roomH = 0.85f,
+        rMin = 3.2f, rMax = 4.0f, wMin = 1.5f, wMax = 1.8f, hMin = 0.8f, hMax = 0.9f,
+    };
 
     struct P { public float x, d, s, r, w, h; public P(float x, float d, float s, float r, float w = 1f, float h = 1f) { this.x = x; this.d = d; this.s = s; this.r = r; this.w = w; this.h = h; } }
 
-    /// The moon is small: 20 m down, the sphere a tunnel runs on is only 30 m
-    /// in radius, so the same arc is 40% shorter and the same drop far steeper.
-    /// Authored depths are scaled by this so every leg stays walkable (the
-    /// installer measures the real slopes). Heights above ground are not scaled.
-    /// The first 8 m of descent are NOT scaled: the entrance has to get under
-    /// the terrain at its authored rate or its roof ends up in the ground.
-    const float DepthScale = 0.55f;
-    const float DepthScaleFrom = 8f;
-
+    /// (x lateral, d depth below the mouth sphere, s arc along) → cave-local.
+    /// Angular position is the surface arc; deeper points sit on a smaller
+    /// sphere, so the same arc is a shorter distance there. The generator
+    /// measures real slopes and distances on the mapped points.
     static Vector3 Arc(float R, float x, float d, float s)
     {
-        if (d > DepthScaleFrom) d = DepthScaleFrom + (d - DepthScaleFrom) * DepthScale;
         float along = Mathf.Sqrt(x * x + s * s);
         if (along < 1e-4f) return new Vector3(0f, -d, 0f);
         float theta = along / R;
@@ -100,138 +138,226 @@ public static class MoonCaveInstaller
         return dir * (R - d) - new Vector3(0f, R, 0f);
     }
 
-    static void Run(CaveSolid.Layout L, float R, bool firstOpenAir, params P[] pts)
+    class Node { public float x, d, s, heading, r, w, h; public int children, fails; public List<int> links = new List<int>(); }
+
+    class Net
     {
-        for (int i = 0; i < pts.Length - 1; i++)
+        public List<Node> nodes = new List<Node>();
+        public List<(int a, int b)> legs = new List<(int, int)>();
+        public List<(int node, float r, float w, float h)> rooms = new List<(int, float, float, float)>();
+        public int loops; public float length; public float maxDepth;
+    }
+
+    static Net Grow(Site site, NetParams P)
+    {
+        float R = site.R;
+        var rng = new System.Random(P.seed);
+        float Rand(float a, float b) => Mathf.Lerp(a, b, (float)rng.NextDouble());
+        var net = new Net();
+        Vector3 Pos(Node n) => Arc(R, n.x, n.d, n.s);
+        Matrix4x4 toMoon = Matrix4x4.TRS(site.localPos, site.localRot, Vector3.one);
+        float mouthAz = Mathf.Atan2(site.localPos.z, site.localPos.x) * Mathf.Rad2Deg;
+        bool Allowed(Node n)
         {
-            var a = pts[i]; var b = pts[i + 1];
+            if (n.d < P.minDepth || n.d > P.maxDepth) return false;
+            if (n.s < P.sMin || n.x < P.xMin || n.x > P.xMax) return false;
+            if (Mathf.Sqrt(n.x * n.x + n.s * n.s) > P.alongMax) return false;
+            Vector3 m = toMoon.MultiplyPoint3x4(Pos(n));
+            if (m.normalized.y < -0.25f) return false;         // stay off the moon-base hemisphere
+            // Stay inside this cave's wedge of the moon (about the moon's own
+            // axis), so three sprawling networks can never meet. The margin is
+            // metres of rock, so in degrees it grows as the passage nears the
+            // axis — deep caves keep further apart, and nothing crowds the pole.
+            float az = Mathf.Atan2(m.z, m.x) * Mathf.Rad2Deg;
+            float rho = Mathf.Sqrt(m.x * m.x + m.z * m.z);
+            if (rho < P.sectorMarginM * 1.2f) return false;
+            float marginDeg = Mathf.Asin(Mathf.Clamp01(P.sectorMarginM / rho)) * Mathf.Rad2Deg;
+            return Mathf.Abs(Mathf.DeltaAngle(az, mouthAz)) <= P.sectorHalfDeg - marginDeg;
+        }
+        bool SlopeOk(Node a, Node b)
+        {
+            float dd = Mathf.Abs(a.d - b.d);
+            float len = (Pos(a) - Pos(b)).magnitude;
+            float run = Mathf.Sqrt(Mathf.Max(0.01f, len * len - dd * dd));
+            return Mathf.Atan2(dd, run) * Mathf.Rad2Deg <= P.maxSlopeDeg;
+        }
+        // Clearance of a leg (i→j, j may be -1 for a new node) against every
+        // passage that is not within one hop of its endpoints. Legs that share
+        // a junction with it meet there by definition — the smooth union
+        // fillets that joint — so they are not "separate passages". The turn
+        // limit keeps a leg from folding back onto the one it came from.
+        bool Touches(int node, int i, int j)
+        {
+            if (node == i || node == j) return true;
+            if (i >= 0 && net.nodes[i].links.Contains(node)) return true;
+            if (j >= 0 && net.nodes[j].links.Contains(node)) return true;
+            return false;
+        }
+        bool Clear(Vector3 pa, Vector3 pb, float rc, int i, int j)
+        {
+            for (int k = 0; k < net.legs.Count; k++)
+            {
+                var (a, b) = net.legs[k];
+                if (Touches(a, i, j) || Touches(b, i, j)) continue;
+                float rr = (net.nodes[a].r + net.nodes[b].r) * 0.5f;
+                if (SegSegDist(pa, pb, Pos(net.nodes[a]), Pos(net.nodes[b])) - rr - rc < P.gap) return false;
+            }
+            for (int k = 0; k < net.rooms.Count; k++)
+            {
+                var rm = net.rooms[k];
+                if (Touches(rm.node, i, j)) continue;
+                if (SegPointDist(pa, pb, Pos(net.nodes[rm.node])) - rm.r * Mathf.Max(rm.w, rm.h) - rc < P.gap) return false;
+            }
+            for (int k = 0; k < net.nodes.Count; k++)
+            {
+                if (Touches(k, i, j)) continue;
+                if (SegPointDist(pa, pb, Pos(net.nodes[k])) - net.nodes[k].r - rc < P.gap) return false;
+            }
+            // The far end must not land on top of a neighbour's passage either.
+            if (j < 0)
+                foreach (int nb in net.nodes[i].links)
+                    if ((Pos(net.nodes[nb]) - pb).magnitude < P.gap + rc + net.nodes[nb].r) return false;
+            return true;
+        }
+        int Add(Node n) { net.nodes.Add(n); return net.nodes.Count - 1; }
+        void Link(int a, int b)
+        {
+            net.legs.Add((a, b));
+            net.nodes[a].links.Add(b); net.nodes[b].links.Add(a);
+            net.length += (Pos(net.nodes[a]) - Pos(net.nodes[b])).magnitude;
+        }
+
+        // Fixed entrance: a flush sinkhole ramp, 25° down, into the network.
+        int n0 = Add(new Node { x = 0, d = -1.2f, s = -2.5f, r = 2.3f, w = 1.15f, h = 0.95f });
+        int n1 = Add(new Node { x = 0, d = 1.2f, s = 2.5f, r = 2.3f, w = 1.15f, h = 0.95f });
+        int n2 = Add(new Node { x = 0, d = 4.5f, s = 9.5f, r = 2.6f, w = 1.2f, h = 1.0f });
+        int n3 = Add(new Node { x = 0, d = 7.5f, s = 16f, r = 3.0f, w = 1.3f, h = 1.0f });
+        Link(n0, n1); Link(n1, n2); Link(n2, n3);
+        // A first junction room so the cave opens up right after the ramp.
+        int n4 = Add(new Node { x = 0, d = 10.5f, s = 23f, r = 3.2f, w = 1.3f, h = 1.0f, heading = 0f });
+        Link(n3, n4);
+        net.rooms.Add((n4, 5.5f, 1.2f, 1.0f));
+
+        var frontier = new List<int> { n4 };
+        int tries = 0;
+        while (net.legs.Count < P.targetLegs + 4 && tries < 20000 && frontier.Count > 0)
+        {
+            tries++;
+            // Prefer the newest open nodes so the cave sprawls outward, but keep
+            // every open node available so side branches keep coming.
+            int fi = (rng.NextDouble() < 0.7 && frontier.Count > 3)
+                ? frontier[frontier.Count - 1 - rng.Next(Mathf.Min(6, frontier.Count))]
+                : frontier[rng.Next(frontier.Count)];
+            var f = net.nodes[fi];
+            var c = new Node
+            {
+                // The first branches off the entrance room fan out in every
+                // direction; after that each leg turns from its parent.
+                heading = fi == n4 ? Rand(-150f, 150f) * Mathf.Deg2Rad
+                                   : f.heading + Rand(-P.turnMax, P.turnMax) * Mathf.Deg2Rad,
+                r = Rand(P.rMin, P.rMax), w = Rand(P.wMin, P.wMax), h = Rand(P.hMin, P.hMax),
+            };
+            float len = Rand(P.lenMin, P.lenMax);
+            c.x = f.x + Mathf.Sin(c.heading) * len;
+            c.s = f.s + Mathf.Cos(c.heading) * len;
+            c.d = Mathf.Clamp(f.d + Rand(P.descMin, P.descMax), P.minDepth, P.maxDepth);
+            bool ok = Allowed(c) && SlopeOk(f, c);
+            if (ok)
+            {
+                Vector3 pa = Pos(f), pb = Pos(c);
+                float rc = (f.r + c.r) * 0.5f;
+                ok = Clear(pa, pb, rc, fi, -1);
+            }
+            if (!ok)
+            {
+                if (++f.fails > 120) frontier.Remove(fi);
+                continue;
+            }
+            int ci = Add(c);
+            Link(fi, ci);
+            f.children++;
+            if (f.children >= 3 || (f.children >= 2 && (float)rng.NextDouble() > P.branchKeep)) frontier.Remove(fi);
+            frontier.Add(ci);
+            net.maxDepth = Mathf.Max(net.maxDepth, c.d);
+
+            if ((float)rng.NextDouble() < P.roomProb)
+            {
+                float rr = Rand(P.roomMin, P.roomMax);
+                // A room must not eat a neighbouring passage.
+                bool roomOk = true;
+                Vector3 pc = Pos(c);
+                // Same rule as legs: passages that meet this junction are part
+                // of the room, not obstacles to it.
+                for (int k = 0; k < net.legs.Count && roomOk; k++)
+                {
+                    var (a, b) = net.legs[k];
+                    if (Touches(a, ci, -1) || Touches(b, ci, -1)) continue;
+                    float lr = (net.nodes[a].r + net.nodes[b].r) * 0.5f;
+                    if (SegPointDist(Pos(net.nodes[a]), Pos(net.nodes[b]), pc) - lr - rr < P.gap) roomOk = false;
+                }
+                for (int k = 0; k < net.rooms.Count && roomOk; k++)
+                {
+                    var rm = net.rooms[k];
+                    if (Touches(rm.node, ci, -1)) continue;
+                    if ((Pos(net.nodes[rm.node]) - pc).magnitude - rm.r - rr < P.gap) roomOk = false;
+                }
+                if (roomOk) net.rooms.Add((ci, rr, P.roomW, P.roomH));
+            }
+        }
+
+        // Loops: join two non-adjacent nodes that happen to be close, so the
+        // cave doubles back on itself and the way out is not obvious.
+        for (int t = 0; t < 4000 && net.loops < P.loops; t++)
+        {
+            int i = 5 + rng.Next(Mathf.Max(1, net.nodes.Count - 5)), j = 5 + rng.Next(Mathf.Max(1, net.nodes.Count - 5));
+            if (i >= net.nodes.Count || j >= net.nodes.Count || i == j) continue;
+            var a = net.nodes[i]; var b = net.nodes[j];
+            if (a.links.Contains(j)) continue;
+            // not already one hop apart via a shared neighbour
+            bool near = false; foreach (int l in a.links) if (b.links.Contains(l)) { near = true; break; }
+            if (near) continue;
+            float dist = (Pos(a) - Pos(b)).magnitude;
+            if (dist < 8f || dist > 18f || !SlopeOk(a, b)) continue;
+            if (!Clear(Pos(a), Pos(b), (a.r + b.r) * 0.5f, i, j)) continue;
+            Link(i, j);
+            net.loops++;
+        }
+        return net;
+    }
+
+    static CaveSolid.Layout BuildFromNet(Site site, Net net, CaveSolid.Recipe recipe)
+    {
+        float R = site.R;
+        var L = new CaveSolid.Layout { style = CaveSolid.Style.Preset(recipe), bodyRadius = R };
+        Vector3 Pos(Node n) => Arc(R, n.x, n.d, n.s);
+        for (int k = 0; k < net.legs.Count; k++)
+        {
+            var (a, b) = net.legs[k];
+            var na = net.nodes[a]; var nb = net.nodes[b];
             L.segments.Add(new CaveSolid.Segment
             {
-                a = Arc(R, a.x, a.d, a.s), b = Arc(R, b.x, b.d, b.s),
-                ra = a.r, rb = b.r, wa = a.w, wb = b.w, ha = a.h, hb = b.h,
-                openAir = firstOpenAir && i == 0,
+                a = Pos(na), b = Pos(nb), ra = na.r, rb = nb.r, wa = na.w, wb = nb.w, ha = na.h, hb = nb.h,
+                openAir = k == 0,
             });
         }
-    }
+        foreach (var rm in net.rooms)
+            L.rooms.Add(new CaveSolid.Room { centre = Pos(net.nodes[rm.node]), radius = rm.r, w = rm.w, h = rm.h });
 
-    static void RoomAt(CaveSolid.Layout L, float R, float x, float d, float s, float r, float w = 1f, float h = 1f)
-        => L.rooms.Add(new CaveSolid.Room { centre = Arc(R, x, d, s), radius = r, w = w, h = h });
-
-    /// A — the Warren. Ramp in, early fork; the left arm loops through a low
-    /// wide cavern and rejoins at a tall chamber the right arm drops into;
-    /// pockets off the chamber, then a lower level to a deep room.
-    static CaveSolid.Layout BuildWarren(float R)
-    {
-        var L = new CaveSolid.Layout { style = CaveSolid.Style.Preset(CaveSolid.Recipe.Strata), bodyRadius = R };
-        var M0 = new P(0, -2.4f, -5.5f, 2.8f, 1.3f, 0.9f);
-        var M1 = new P(0, -0.6f, -0.5f, 2.8f, 1.3f, 0.95f);
-        var M2 = new P(0, 2.9f, 7.0f, 3.0f, 1.3f, 1.0f);
-        var M3 = new P(0, 6.2f, 14.0f, 3.3f, 1.35f, 1.0f);
-        var F  = new P(3, 8.8f, 20.0f, 3.4f, 1.35f, 1.0f);
-        Run(L, R, true, M0, M1, M2, M3, F);
-        // left loop
-        var L1 = new P(-5, 11.5f, 25.5f, 3.2f, 1.3f, 1.0f);
-        var L2 = new P(-12, 14.0f, 32.0f, 3.4f, 1.3f, 1.0f);
-        var L3 = new P(-7, 16.5f, 39.0f, 3.2f, 1.3f, 1.0f);
-        var L4 = new P(2, 18.5f, 42.0f, 3.3f, 1.3f, 1.0f);
-        var T  = new P(11, 18.5f, 38.0f, 3.5f, 1.3f, 1.05f);
-        Run(L, R, false, F, L1, L2, L3, L4, T);
-        RoomAt(L, R, -12, 14.0f, 32.0f, 6.5f, 1.2f, 0.62f);     // low wide cavern
-        // right arm
-        var R1 = new P(10, 12.2f, 25.0f, 3.3f, 1.35f, 1.0f);
-        var R2 = new P(14, 15.4f, 31.0f, 3.3f, 1.35f, 1.0f);
-        Run(L, R, false, F, R1, R2, T);
-        RoomAt(L, R, 11, 18.5f, 38.0f, 7.0f, 1.1f, 1.35f);      // tall chamber
-        // pockets + lower level
-        var S1 = new P(18, 20.5f, 44.0f, 3.0f, 1.2f, 1.0f);
-        Run(L, R, false, T, S1);
-        RoomAt(L, R, 18, 20.5f, 44.0f, 4.0f);
-        var S2 = new P(6, 22.5f, 47.0f, 3.1f, 1.3f, 1.0f);
-        var D1 = new P(-3, 25.5f, 51.0f, 3.2f, 1.3f, 1.0f);
-        var D  = new P(-10, 28.0f, 54.0f, 3.4f, 1.3f, 1.0f);
-        Run(L, R, false, T, S2, D1, D);
-        RoomAt(L, R, 6, 22.5f, 47.0f, 4.5f);
-        RoomAt(L, R, -10, 28.0f, 54.0f, 6.0f, 1.15f, 1.0f);     // deep room
-        // dead-end crawl off the left arm
-        var C1 = new P(-11, 12.5f, 21.0f, 2.2f, 1.2f, 0.9f);
-        Run(L, R, false, L1, C1);
-        RoomAt(L, R, -11, 12.5f, 21.0f, 3.0f);
+        // Built-in features scale with how much tunnel there is (presets are per ~150 m).
+        float k150 = Mathf.Clamp(net.length / 150f, 1f, 5f);
+        var st = L.style;
+        st.stalactites = Mathf.RoundToInt(st.stalactites * k150);
+        st.stalagmites = Mathf.RoundToInt(st.stalagmites * k150);
+        st.columns = Mathf.RoundToInt(st.columns * k150);
+        st.boulders = Mathf.RoundToInt(st.boulders * k150);
+        st.blocks = Mathf.RoundToInt(st.blocks * k150);
+        st.rubble = Mathf.RoundToInt(st.rubble * k150);
         return L;
     }
 
-    /// B — the Descent. A tall crack in, switchback ramps down through three
-    /// stacked caverns, side tunnels off each, a crawl at the bottom.
-    static CaveSolid.Layout BuildDescent(float R)
-    {
-        var L = new CaveSolid.Layout { style = CaveSolid.Style.Preset(CaveSolid.Recipe.Dripstone), bodyRadius = R };
-        var M0 = new P(0, -3.0f, -5.0f, 2.7f, 0.5f, 1.4f);
-        var M1 = new P(0, -1.0f, 0.0f, 2.7f, 0.55f, 1.25f);
-        var M2 = new P(0, 2.4f, 7.5f, 2.8f, 0.75f, 1.0f);
-        var M3 = new P(3, 5.6f, 14.0f, 3.0f, 1.0f, 1.0f);
-        var C1 = new P(6, 7.5f, 20.0f, 3.2f, 1.2f, 0.95f);
-        Run(L, R, true, M0, M1, M2, M3, C1);
-        RoomAt(L, R, 6, 7.5f, 20.0f, 5.5f, 1.2f, 0.9f);        // cavern 1
-        var S1 = new P(-2, 10.5f, 24.0f, 3.1f, 1.25f, 1.0f);
-        var S2 = new P(-9, 13.5f, 20.0f, 3.1f, 1.25f, 1.0f);
-        var C2 = new P(-12, 15.5f, 26.0f, 3.2f, 1.25f, 1.0f);
-        Run(L, R, false, C1, S1, S2, C2);
-        RoomAt(L, R, -12, 15.5f, 26.0f, 6.0f, 1.15f, 1.0f);    // cavern 2
-        var T1 = new P(12, 9.5f, 24.0f, 2.8f, 1.2f, 1.0f);
-        var T1e = new P(16, 11.0f, 28.0f, 2.8f, 1.2f, 1.0f);
-        Run(L, R, false, C1, T1, T1e);
-        RoomAt(L, R, 16, 11.0f, 28.0f, 3.5f);
-        var T2 = new P(-18, 17.5f, 32.0f, 2.8f, 1.2f, 1.0f);
-        var T2e = new P(-22, 19.0f, 37.0f, 2.8f, 1.2f, 1.0f);
-        Run(L, R, false, C2, T2, T2e);
-        RoomAt(L, R, -22, 19.0f, 37.0f, 4.0f);
-        var S3 = new P(-6, 18.5f, 32.0f, 3.1f, 1.25f, 1.0f);
-        var S4 = new P(2, 21.5f, 36.0f, 3.1f, 1.25f, 1.0f);
-        var C3 = new P(6, 24.0f, 42.0f, 3.2f, 1.25f, 1.1f);
-        Run(L, R, false, C2, S3, S4, C3);
-        RoomAt(L, R, 6, 24.0f, 42.0f, 6.5f, 1.1f, 1.2f);        // cavern 3, tall
-        var K1 = new P(12, 26.0f, 47.0f, 2.0f, 1.1f, 0.9f);
-        var K2 = new P(16, 27.5f, 52.0f, 1.9f, 1.1f, 0.9f);
-        Run(L, R, false, C3, K1, K2);
-        RoomAt(L, R, 16, 27.5f, 52.0f, 2.6f);
-        return L;
-    }
-
-    /// C — the Hall. Wide low mouth into one long broken hall with pillars,
-    /// branches left and right into rooms, a rear chamber and a deep room.
-    static CaveSolid.Layout BuildHall(float R)
-    {
-        var L = new CaveSolid.Layout { style = CaveSolid.Style.Preset(CaveSolid.Recipe.Collapse), bodyRadius = R };
-        var M0 = new P(0, -2.0f, -5.5f, 3.0f, 1.7f, 0.65f);
-        var M1 = new P(0, -0.4f, -0.5f, 3.0f, 1.7f, 0.7f);
-        var M2 = new P(0, 3.0f, 7.0f, 3.2f, 1.6f, 0.8f);
-        var H1 = new P(0, 6.2f, 14.0f, 3.8f, 1.7f, 0.85f);
-        var H2 = new P(2, 8.6f, 22.0f, 4.0f, 1.8f, 0.9f);
-        var H3 = new P(1, 11.0f, 30.0f, 4.0f, 1.8f, 0.9f);
-        var H4 = new P(-2, 13.5f, 38.0f, 3.8f, 1.7f, 0.85f);
-        var RC = new P(-4, 16.5f, 46.0f, 3.6f, 1.4f, 1.0f);
-        Run(L, R, true, M0, M1, M2, H1, H2, H3, H4, RC);
-        RoomAt(L, R, -4, 16.5f, 46.0f, 6.5f, 1.2f, 1.0f);      // rear chamber
-        var BL1 = new P(-9, 8.5f, 17.0f, 3.0f, 1.3f, 0.9f);
-        var BL  = new P(-15, 10.5f, 21.0f, 3.0f, 1.3f, 0.9f);
-        Run(L, R, false, H1, BL1, BL);
-        RoomAt(L, R, -15, 10.5f, 21.0f, 4.5f);
-        var BR1 = new P(10, 10.5f, 25.0f, 3.0f, 1.3f, 0.9f);
-        var BR  = new P(16, 12.5f, 30.0f, 3.0f, 1.3f, 0.9f);
-        var BR2 = new P(20, 15.5f, 37.0f, 2.8f, 1.2f, 0.9f);
-        var BR3 = new P(18, 18.0f, 44.0f, 2.8f, 1.2f, 0.9f);
-        Run(L, R, false, H2, BR1, BR, BR2, BR3);
-        RoomAt(L, R, 16, 12.5f, 30.0f, 5.0f);
-        RoomAt(L, R, 18, 18.0f, 44.0f, 4.0f);
-        var BL2 = new P(-10, 15.5f, 41.0f, 3.0f, 1.3f, 0.9f);
-        var BL3 = new P(-16, 18.5f, 46.0f, 3.0f, 1.3f, 0.9f);
-        Run(L, R, false, H4, BL2, BL3);
-        RoomAt(L, R, -16, 18.5f, 46.0f, 5.5f, 1.2f, 0.9f);
-        var D1 = new P(-1, 19.5f, 52.0f, 3.0f, 1.3f, 0.9f);
-        var D  = new P(4, 22.0f, 57.0f, 3.0f, 1.3f, 0.9f);
-        Run(L, R, false, RC, D1, D);
-        RoomAt(L, R, 4, 22.0f, 57.0f, 5.0f);
-        return L;
-    }
+    static CaveSolid.Layout BuildWarren(Site site) => BuildFromNet(site, Grow(site, WarrenParams), CaveSolid.Recipe.Strata);
+    static CaveSolid.Layout BuildDescent(Site site) => BuildFromNet(site, Grow(site, DescentParams), CaveSolid.Recipe.Dripstone);
+    static CaveSolid.Layout BuildHall(Site site) => BuildFromNet(site, Grow(site, HallParams), CaveSolid.Recipe.Collapse);
 
     // ── Install ──────────────────────────────────────────────────────────────
 
@@ -336,6 +462,7 @@ public static class MoonCaveInstaller
             Vector3 moonCentre = moonT.position;
             var log = new System.Text.StringBuilder();
             bool allOk = true;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
 
             // 3. Per site: frame, heightmap, build.
             foreach (var site in Sites)
@@ -379,11 +506,16 @@ public static class MoonCaveInstaller
                         if (Mathf.Abs(x) <= 16f && Mathf.Abs(z) <= 16f) { minH = Mathf.Min(minH, hgt); maxH = Mathf.Max(maxH, hgt); }
                     }
 
-                site.layout = site.build(site.R);
+                double tHeight = clock.Elapsed.TotalSeconds;
+                site.layout = site.build(site);
+                double tGrow = clock.Elapsed.TotalSeconds;
                 site.layout.ground = ground;
                 site.result = CaveSolid.Build(site.layout);
                 var res = site.result;
-                log.AppendLine($"[MoonCaves] Cave {site.name} ({site.title}, {site.recipe}) at moon-local {site.localPos} (R={site.R:0.0}), terrain within 16 m of the mouth spans {minH:0.0}..{maxH:0.0} m, heightmap misses {misses}.");
+                log.AppendLine($"[MoonCaves]   timing: heightmap done at {tHeight:0}s, network grown at {tGrow:0}s, solid built at {clock.Elapsed.TotalSeconds:0}s since install began.");
+                float totalLen = 0f; foreach (var sg in site.layout.segments) totalLen += (sg.b - sg.a).magnitude;
+                float deepest = 0f; foreach (var sg in site.layout.segments) { deepest = Mathf.Max(deepest, site.R - (sg.a - new Vector3(0f, -site.R, 0f)).magnitude); deepest = Mathf.Max(deepest, site.R - (sg.b - new Vector3(0f, -site.R, 0f)).magnitude); }
+                log.AppendLine($"[MoonCaves] Cave {site.name} ({site.title}, {site.recipe}) at moon-local {site.localPos} (R={site.R:0.0}): {site.layout.segments.Count} legs, {totalLen:0} m of tunnel, {site.layout.rooms.Count} rooms, deepest {deepest:0.0} m; terrain within 16 m of the mouth spans {minH:0.0}..{maxH:0.0} m.");
                 if (!res.ok)
                 {
                     log.AppendLine($"[MoonCaves]   FAILED: {res.failure}");
@@ -424,6 +556,7 @@ public static class MoonCaveInstaller
                 }
             }
 
+            log.AppendLine($"[MoonCaves] All checks done at {clock.Elapsed.TotalSeconds:0}s.");
             Debug.Log(log.ToString());
             if (!allOk)
             {
@@ -627,9 +760,12 @@ public static class MoonCaveInstaller
         // Pocket lights in the biggest rooms — dim, warm, no shadows.
         int li = 0;
         var wanted = new HashSet<string>();
-        foreach (var room in L.rooms)
+        var litRooms = new List<CaveSolid.Room>(L.rooms);
+        litRooms.Sort((p, q) => q.radius.CompareTo(p.radius));
+        if (litRooms.Count > 6) litRooms.RemoveRange(6, litRooms.Count - 6);
+        foreach (var room in litRooms)
         {
-            if (room.radius < 5.4f) continue;
+            if (room.radius < 4.5f) continue;
             string name = "CaveLight_" + li++;
             wanted.Add(name);
             var lt = root.transform.Find(name);

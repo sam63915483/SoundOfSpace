@@ -23,6 +23,8 @@ Shader "Custom/CaveRock"
         _BumpScale ("Normal strength", Range(0, 3)) = 1.2
         _ExposureFloor ("Minimum daylight inside", Range(0, 0.3)) = 0.03
         _ExposurePower ("Daylight falloff", Range(0.5, 3)) = 1.6
+        _MoonColor ("Surface rock colour (matches the moon)", Color) = (0.78, 0.78, 0.78, 1)
+        _MoonBlend ("How fully sky-lit rock takes that colour", Range(0, 1)) = 0.9
     }
     SubShader
     {
@@ -40,6 +42,8 @@ Shader "Custom/CaveRock"
         float _BumpScale;
         float _ExposureFloor;
         float _ExposurePower;
+        fixed4 _MoonColor;
+        float _MoonBlend;
 
         struct Input
         {
@@ -125,7 +129,12 @@ Shader "Custom/CaveRock"
             float3 tsN = float3(dot(objN, T), dot(objN, B), dot(objN, n));
             o.Normal = normalize(tsN);
 
-            o.Albedo = alb * IN.color.rgb * _Color.rgb;
+            // Rock the sky can see is the moon's surface: flat moon grey, no
+            // cracks — so a mouth reads as part of the moon, not a lump on it.
+            float surface = smoothstep(0.25, 0.7, IN.color.a) * _MoonBlend;
+            fixed3 inside = alb * IN.color.rgb * _Color.rgb;
+            o.Albedo = lerp(inside, _MoonColor.rgb, surface);
+            o.Normal = normalize(lerp(o.Normal, float3(0, 0, 1), surface * 0.8));
             o.Exposure = _ExposureFloor + (1.0 - _ExposureFloor) * pow(saturate(IN.color.a), _ExposurePower);
             o.Emission = 0;
             o.Specular = 0;

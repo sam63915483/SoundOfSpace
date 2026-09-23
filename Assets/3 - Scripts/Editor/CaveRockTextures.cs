@@ -26,7 +26,6 @@ public static class CaveRockTextures
 
         string matPath = $"{Folder}/Cave_Rock_{recipe}.mat";
         var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
-        if (mat != null && mat.mainTexture != null && mat.GetTexture("_BumpMap") != null) return mat;
 
         var shader = Shader.Find("Custom/CaveRock");
         if (shader == null)
@@ -61,6 +60,7 @@ public static class CaveRockTextures
         mat.SetFloat("_ExposureFloor", 0.03f);
         mat.SetFloat("_ExposurePower", 1.6f);
         mat.SetColor("_Color", Color.white);
+        if (mat.HasProperty("_MoonColor")) { mat.SetColor("_MoonColor", new Color(0.78f, 0.78f, 0.78f)); mat.SetFloat("_MoonBlend", 0.9f); }
         mat.enableInstancing = true;
         EditorUtility.SetDirty(mat);
         return mat;

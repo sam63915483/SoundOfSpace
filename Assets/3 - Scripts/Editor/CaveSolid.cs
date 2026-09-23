@@ -125,8 +125,8 @@ public static class CaveSolid
                     s.noiseAmp = 0.9f; s.noiseScale = 0.14f; s.detailWeight = 0.6f; s.warpStrength = 2.5f;
                     s.strataAmp = 0.5f; s.strataFreq = 0.55f; s.ceilingRoughen = 0.4f; s.floorNoise = 0.2f;
                     s.stalactites = 10; s.stalagmites = 8; s.columns = 0; s.boulders = 18; s.blocks = 4; s.rubble = 12;
-                    s.mouthBoulders = 9;
-                    s.moundCentre = new Vector3(0f, 1.0f, 4f); s.moundRadii = new Vector3(9.5f, 6.5f, 12f);
+                    s.mouthBoulders = 4;
+                    s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.rockTint = new Color(0.84f, 0.85f, 0.89f); s.floorTint = new Color(0.95f, 0.94f, 0.90f);
                     s.steepTint = new Color(0.70f, 0.71f, 0.76f);
                     break;
@@ -136,8 +136,8 @@ public static class CaveSolid
                     s.verticalStretch = 0.45f;
                     s.strataAmp = 0.15f; s.strataFreq = 0.3f; s.ceilingRoughen = 0.3f; s.floorNoise = 0.15f;
                     s.stalactites = 60; s.stalagmites = 40; s.columns = 5; s.boulders = 4; s.blocks = 0; s.rubble = 0;
-                    s.mouthBoulders = 5;
-                    s.moundCentre = new Vector3(0f, 0.5f, 4f); s.moundRadii = new Vector3(7f, 9f, 12f);
+                    s.mouthBoulders = 3;
+                    s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 0.6f;
                     s.rockTint = new Color(0.90f, 0.82f, 0.70f); s.floorTint = new Color(0.62f, 0.56f, 0.50f);
                     s.steepTint = new Color(0.86f, 0.76f, 0.62f);
@@ -147,8 +147,8 @@ public static class CaveSolid
                     s.noiseAmp = 1.0f; s.noiseScale = 0.16f; s.detailWeight = 0.7f; s.warpStrength = 2.0f;
                     s.strataAmp = 0.3f; s.strataFreq = 0.4f; s.ceilingRoughen = 0.7f; s.floorNoise = 0.3f;
                     s.stalactites = 6; s.stalagmites = 4; s.columns = 3; s.boulders = 30; s.blocks = 18; s.rubble = 36;
-                    s.mouthBoulders = 14;
-                    s.moundCentre = new Vector3(0f, -0.2f, 3.5f); s.moundRadii = new Vector3(10.5f, 6.5f, 11.5f);
+                    s.mouthBoulders = 5;
+                    s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 1.0f;
                     s.rockTint = new Color(0.70f, 0.70f, 0.73f); s.floorTint = new Color(0.80f, 0.79f, 0.76f);
                     s.steepTint = new Color(0.58f, 0.58f, 0.62f);
@@ -285,6 +285,7 @@ public static class CaveSolid
         int nz = Mathf.CeilToInt(b.size.z / cell) + 1;
         Vector3 origin = b.min;
         ctx.origin = origin; ctx.nx = nx; ctx.ny = ny; ctx.nz = nz;
+        ctx.BuildBuckets();
 
         // Sample the field on the grid corners once. Everything else reads this.
         var field = new float[(nx + 1) * (ny + 1) * (nz + 1)];
@@ -293,6 +294,7 @@ public static class CaveSolid
             for (int y = 0; y <= ny; y++)
                 for (int x = 0; x <= nx; x++)
                 {
+                    if (x == 0 && y == 0) ctx.UseZ(z);
                     Vector3 p = origin + new Vector3(x, y, z) * cell;
                     float d = ctx.RockField(p, out float dVoid);
                     // The outermost shell of samples must read as EMPTY: a
@@ -304,6 +306,7 @@ public static class CaveSolid
                     voidGrid[idx] = dVoid;
                 }
         ctx.field = field; ctx.voidGrid = voidGrid;
+        ctx.UseAll();
 
         // ── Surface Nets ─────────────────────────────────────────────────────
         int Idx(int x, int y, int z) => (z * (ny + 1) + y) * (nx + 1) + x;
@@ -431,6 +434,54 @@ public static class CaveSolid
         public Vector3 origin; public int nx, ny, nz;
         public float[] field, voidGrid;
 
+        // Per-z-plane shortlist of shapes that can influence the field there.
+        // SMin is exact when the omitted shape is more than BlendRadius further
+        // than the nearest kept one, and the margin below guarantees that near
+        // any surface. A 40-leg cave would otherwise evaluate every leg at every
+        // one of ~4 million samples.
+        List<int>[] _segsAtZ, _roomsAtZ, _featAtZ;
+        List<int> _curSegs, _curRooms, _curFeat;
+        List<int> _allSegs, _allRooms, _allFeat;
+
+        public void BuildBuckets()
+        {
+            float margin = st.wallThickness + st.noiseAmp * 2f + BlendRadius + 3f;
+            _segsAtZ = new List<int>[nz + 1]; _roomsAtZ = new List<int>[nz + 1]; _featAtZ = new List<int>[nz + 1];
+            for (int z = 0; z <= nz; z++)
+            {
+                float pz = origin.z + z * st.cellSize;
+                var sl = new List<int>(); var rl = new List<int>(); var fl = new List<int>();
+                for (int i = 0; i < segs.Count; i++)
+                {
+                    var sg = segs[i];
+                    float rr = Mathf.Max(sg.ra * Mathf.Max(sg.wa, sg.ha), sg.rb * Mathf.Max(sg.wb, sg.hb)) + margin;
+                    if (pz >= Mathf.Min(sg.a.z, sg.b.z) - rr && pz <= Mathf.Max(sg.a.z, sg.b.z) + rr) sl.Add(i);
+                }
+                for (int i = 0; i < rooms.Count; i++)
+                {
+                    float rr = rooms[i].radius * Mathf.Max(rooms[i].w, rooms[i].h) + margin;
+                    if (Mathf.Abs(pz - rooms[i].centre.z) <= rr) rl.Add(i);
+                }
+                for (int i = 0; i < interior.Count; i++)
+                {
+                    var f = interior[i];
+                    float rr = Mathf.Max(f.ra, Mathf.Max(f.rb, Mathf.Max(f.scale.x, Mathf.Max(f.scale.y, f.scale.z)))) + 3f;
+                    if (pz >= Mathf.Min(f.a.z, f.b.z) - rr && pz <= Mathf.Max(f.a.z, f.b.z) + rr) fl.Add(i);
+                }
+                _segsAtZ[z] = sl; _roomsAtZ[z] = rl; _featAtZ[z] = fl;
+            }
+            UseAll();
+        }
+
+        public void UseZ(int z) { _curSegs = _segsAtZ[z]; _curRooms = _roomsAtZ[z]; _curFeat = _featAtZ[z]; }
+        public void UseAll()
+        {
+            _allSegs = new List<int>(); for (int i = 0; i < segs.Count; i++) _allSegs.Add(i);
+            _allRooms = new List<int>(); for (int i = 0; i < rooms.Count; i++) _allRooms.Add(i);
+            _allFeat = new List<int>(); for (int i = 0; i < interior.Count; i++) _allFeat.Add(i);
+            _curSegs = _allSegs; _curRooms = _allRooms; _curFeat = _allFeat;
+        }
+
         public Ctx(Layout layout)
         {
             L = layout; st = layout.style; segs = layout.segments; rooms = layout.rooms;
@@ -519,15 +570,17 @@ public static class CaveSolid
         float VoidRaw(Vector3 p, out float floorness, out float upness)
         {
             float d = float.MaxValue, fl = 0f, upn = 0f, best = float.MaxValue;
-            for (int i = 0; i < segs.Count; i++)
+            if (_curSegs == null) UseAll();
+            var sl = _curSegs; var rl = _curRooms;
+            for (int k = 0; k < sl.Count; k++)
             {
-                float di = SegmentField(p, segs[i], out float f, out float u);
+                float di = SegmentField(p, segs[sl[k]], out float f, out float u);
                 if (di < best) { best = di; fl = f; upn = u; }
                 d = SMin(d, di);
             }
-            for (int i = 0; i < rooms.Count; i++)
+            for (int k = 0; k < rl.Count; k++)
             {
-                float di = RoomField(p, rooms[i], out float f, out float u);
+                float di = RoomField(p, rooms[rl[k]], out float f, out float u);
                 if (di < best) { best = di; fl = f; upn = u; }
                 d = SMin(d, di);
             }
@@ -554,9 +607,11 @@ public static class CaveSolid
         {
             float d = float.MaxValue;
             float wall = st.wallThickness;
-            for (int i = 0; i < segs.Count; i++)
+            if (_curSegs == null) UseAll();
+            var sl = _curSegs; var rl = _curRooms;
+            for (int k = 0; k < sl.Count; k++)
             {
-                var s = segs[i];
+                var s = segs[sl[k]];
                 Vector3 ab = s.b - s.a;
                 float len2 = ab.sqrMagnitude;
                 float t = len2 < 1e-6f ? 0f : Mathf.Clamp01(Vector3.Dot(p - s.a, ab) / len2);
@@ -571,9 +626,9 @@ public static class CaveSolid
                 Vector3 q = new Vector3(l / rw, v / rh, ax / ra);
                 d = SMin(d, (q.magnitude - 1f) * Mathf.Min(rw, rh));
             }
-            for (int i = 0; i < rooms.Count; i++)
+            for (int k = 0; k < rl.Count; k++)
             {
-                var room = rooms[i];
+                var room = rooms[rl[k]];
                 Vector3 up = Up(room.centre);
                 Frame(Vector3.forward, up, out Vector3 lat, out Vector3 vert);
                 Vector3 lat2 = Vector3.Cross(up, lat).normalized;
@@ -611,6 +666,7 @@ public static class CaveSolid
 
         float Mound(Vector3 p)
         {
+            if (st.moundRadii.x <= 0f) return float.MaxValue;     // no outcrop: a flush sinkhole
             Vector3 c = new Vector3(st.moundCentre.x, moundGround + st.moundCentre.y, st.moundCentre.z);
             float d = SdEllipsoid(p - c, st.moundRadii);
             return d + Noise(p) * st.noiseAmp * st.moundNoise;
@@ -636,12 +692,16 @@ public static class CaveSolid
             {
                 float slab = Mathf.Max(Slab(p, g, bury), -dVoid);
                 rock = SMin(rock, slab, 1.5f);
-                float mound = Mathf.Max(Mound(p), -dVoid);
-                rock = SMin(rock, mound, 2.0f);
+                float mound = Mound(p);
+                if (mound != float.MaxValue) rock = SMin(rock, Mathf.Max(mound, -dVoid), 2.0f);
                 for (int i = 0; i < mouth.Count; i++) rock = Mathf.Min(rock, FeatureField(p, mouth[i]));
             }
             if (raw < 5f)
-                for (int i = 0; i < interior.Count; i++) rock = Mathf.Min(rock, FeatureField(p, interior[i]));
+            {
+                if (_curFeat == null) UseAll();
+                var fl2 = _curFeat;
+                for (int k = 0; k < fl2.Count; k++) rock = Mathf.Min(rock, FeatureField(p, interior[fl2[k]]));
+            }
             return rock;
         }
 
@@ -730,7 +790,8 @@ public static class CaveSolid
                     Vector3 n = (s.b - s.a).normalized;
                     Frame(n, Up(c), out Vector3 lat, out Vector3 vert);
                     float g = G(c);
-                    float top = c.y + h * r + 0.5f, floor = c.y - h * r * FloorSquash - 0.5f;
+                    // Noise can push the roof ~1 m out, so the crossing band is padded.
+                    float top = c.y + h * r + 1.0f, floor = c.y - h * r * FloorSquash - 0.6f;
                     if (g < floor || g > top) continue;          // wholly above or below the ground here
                     for (int k = 0; k < 24; k++)
                     {
@@ -774,7 +835,7 @@ public static class CaveSolid
                     cc += (far - cc) * 0.08f;
                 }
                 L.holeCentre = new Vector3(cc.x, 0f, cc.y);
-                L.holeRadius = rad + 0.7f;
+                L.holeRadius = rad + 1.2f;
             }
             skirtR = L.holeRadius + SkirtExtra;
             moundGround = ground.Sample(st.moundCentre.x, st.moundCentre.z);
@@ -902,7 +963,7 @@ public static class CaveSolid
                 float x = L.holeCentre.x + Mathf.Cos(ang) * rad, z = L.holeCentre.z + Mathf.Sin(ang) * rad;
                 if (Mathf.Abs(x) < 4.5f && z < st.moundCentre.z - 2f) continue;      // the way in
                 float g = ground.Sample(x, z);
-                float r = Rand(0.7f, 1.7f);
+                float r = Rand(0.45f, 1.0f);
                 mouth.Add(new Feature { kind = FeatureKind.Ellipsoid, a = new Vector3(x, g - r * 0.3f, z), scale = new Vector3(r * Rand(0.8f, 1.3f), r * Rand(0.7f, 1.0f), r * Rand(0.8f, 1.3f)), mouth = true });
             }
             if (st.mouth == MouthKind.Collapse)
@@ -932,7 +993,8 @@ public static class CaveSolid
             foreach (var s in segs) { Grow(s.a, s.ra * Mathf.Max(s.wa, s.ha)); Grow(s.b, s.rb * Mathf.Max(s.wb, s.hb)); }
             foreach (var r in rooms) Grow(r.centre, r.radius * Mathf.Max(r.w, r.h));
             Grow(new Vector3(L.holeCentre.x, moundGround, L.holeCentre.z), skirtR + 1f);
-            Grow(new Vector3(st.moundCentre.x, moundGround + st.moundCentre.y, st.moundCentre.z), Mathf.Max(st.moundRadii.x, Mathf.Max(st.moundRadii.y, st.moundRadii.z)) + 1f);
+            if (st.moundRadii.x > 0f)
+                Grow(new Vector3(st.moundCentre.x, moundGround + st.moundCentre.y, st.moundCentre.z), Mathf.Max(st.moundRadii.x, Mathf.Max(st.moundRadii.y, st.moundRadii.z)) + 1f);
             b.Expand((st.wallThickness + st.noiseAmp + st.cellSize * 3f) * 2f);
             return b;
         }
@@ -1002,6 +1064,16 @@ public static class CaveSolid
                 // A tunnel sample that lies inside a room has the ROOM's roof
                 // above it, 9 m up — not a missing roof. Rooms test themselves.
                 if (InsideRoom(c + up * (halfH + 1.6f))) return;
+                // Inside the sinkhole the sky IS the roof: the terrain there is
+                // cut away and the ramp is open by design.
+                float rXZ = new Vector2(c.x - L.holeCentre.x, c.z - L.holeCentre.z).magnitude;
+                if (rXZ < L.holeRadius - 0.5f && c.y > G(c) - 7f) return;
+                // Deep passages cannot lose their roof: the only thing that
+                // removes rock is the terrain clip, and it stops at the ground.
+                // Down there "no rock within 3.5 m" just means another passage
+                // runs directly overhead — the solid is still closed. Only the
+                // near-surface band is tested.
+                if (c.y + halfH < G(c) - 6f) return;
                 // March up from the nominal roof: the wall noise moves the rock
                 // band in and out by up to a metre, so look for rock ANYWHERE in
                 // the next 3.5 m rather than at fixed offsets. A closed solid
@@ -1038,6 +1110,7 @@ public static class CaveSolid
             {
                 Vector3 up = Up(room.centre);
                 Vector3 top = room.centre + up * (room.h * room.radius);
+                if (top.y < G(room.centre) - 6f) continue;      // deep: see above
                 bool found = false; float lowest = float.MaxValue;
                 for (float k = 0.3f; k <= 3.5f && !found; k += 0.15f)
                 {
