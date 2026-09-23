@@ -73,9 +73,9 @@ public static class MoonCaveInstaller
 
     static readonly Site[] Sites =
     {
-        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 45, build = BuildWarren },
-        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 50, build = BuildDescent },
-        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 40, build = BuildHall },
+        new Site { name = "A", title = "the Warren",  dir = new Vector3( 0.94f, 0.34f,  0.00f).normalized, recipe = CaveSolid.Recipe.Strata,    crystals = 18, build = BuildWarren },
+        new Site { name = "B", title = "the Descent", dir = new Vector3(-0.47f, 0.34f,  0.81f).normalized, recipe = CaveSolid.Recipe.Dripstone, crystals = 20, build = BuildDescent },
+        new Site { name = "C", title = "the Hall",    dir = new Vector3(-0.47f, 0.34f, -0.81f).normalized, recipe = CaveSolid.Recipe.Collapse,  crystals = 16, build = BuildHall },
     };
 
     // ── Layouts: a grown tunnel network per cave ─────────────────────────────
@@ -97,9 +97,10 @@ public static class MoonCaveInstaller
         public float lenMin = 9f, lenMax = 14f;     // metres of arc per leg
         public float descMin = -0.5f, descMax = 3.5f; // metres of depth gained per leg
         public float branchKeep = 0.55f;            // chance a node stays open for another child
-        public float roomProb = 0.45f, roomMin = 4f, roomMax = 7f, roomW = 1.15f, roomH = 1.0f;
-        public float rMin = 2.6f, rMax = 3.6f, wMin = 1.2f, wMax = 1.5f, hMin = 0.85f, hMax = 1.05f;
-        public float minDepth = 9f, maxDepth = 30f;          // 30: keeps 12 m clear of the core with 3 m walls
+        public float roomProb = 0.5f, roomMin = 5f, roomMax = 8.5f, roomW = 1.15f, roomH = 1.0f;
+        public float bigRoomProb = 0.12f, bigRoomMin = 9f, bigRoomMax = 11f;   // the odd great cavern
+        public float rMin = 2.1f, rMax = 2.9f, wMin = 1.1f, wMax = 1.35f, hMin = 0.85f, hMax = 1.0f;
+        public float minDepth = 9f, maxDepth = 28f;          // 28: keeps 12 m clear of the core with 3 m walls (30 gave 11.8)
         public float alongMax = 78f, xMin = -34f, xMax = 34f, sMin = -60f;
         public float sectorHalfDeg = 60f;                    // each cave owns a 120° wedge of the moon (about its axis)...
         public float sectorMarginM = 10f;                    // ...minus this much rock (room + wall + half the gap) at the wedge edge, so the wedge narrows with depth
@@ -109,19 +110,19 @@ public static class MoonCaveInstaller
 
     static readonly NetParams WarrenParams = new NetParams
     {
-        seed = 11, targetLegs = 60, loops = 10, turnMax = 80f, lenMin = 8f, lenMax = 13f,
-        descMin = -0.8f, descMax = 3.0f, branchKeep = 0.6f, roomProb = 0.45f, roomMin = 4f, roomMax = 6.5f,
+        seed = 11, targetLegs = 60, loops = 12, turnMax = 80f, lenMin = 8f, lenMax = 13f,
+        descMin = -0.8f, descMax = 3.0f, branchKeep = 0.6f, roomProb = 0.5f, roomMin = 5f, roomMax = 8f,
     };
     static readonly NetParams DescentParams = new NetParams
     {
-        seed = 22, targetLegs = 55, loops = 6, turnMax = 100f, lenMin = 9f, lenMax = 14f,
-        descMin = 0.5f, descMax = 4.2f, branchKeep = 0.45f, roomProb = 0.42f, roomMin = 4.5f, roomMax = 7.5f, roomH = 1.15f,
+        seed = 22, targetLegs = 55, loops = 8, turnMax = 100f, lenMin = 9f, lenMax = 14f,
+        descMin = 0.5f, descMax = 4.2f, branchKeep = 0.5f, roomProb = 0.5f, roomMin = 5f, roomMax = 8.5f, roomH = 1.15f,
     };
     static readonly NetParams HallParams = new NetParams
     {
-        seed = 33, targetLegs = 50, loops = 7, turnMax = 75f, lenMin = 10f, lenMax = 15f,
-        descMin = -0.5f, descMax = 3.2f, branchKeep = 0.5f, roomProb = 0.4f, roomMin = 5f, roomMax = 8f, roomW = 1.3f, roomH = 0.85f,
-        rMin = 3.2f, rMax = 4.0f, wMin = 1.5f, wMax = 1.8f, hMin = 0.8f, hMax = 0.9f,
+        seed = 33, targetLegs = 50, loops = 9, turnMax = 75f, lenMin = 10f, lenMax = 15f,
+        descMin = -0.5f, descMax = 3.2f, branchKeep = 0.55f, roomProb = 0.5f, roomMin = 5.5f, roomMax = 9f, roomW = 1.3f, roomH = 0.85f,
+        rMin = 2.4f, rMax = 3.2f, wMin = 1.3f, wMax = 1.6f, hMin = 0.8f, hMax = 0.9f,
     };
 
     struct P { public float x, d, s, r, w, h; public P(float x, float d, float s, float r, float w = 1f, float h = 1f) { this.x = x; this.d = d; this.s = s; this.r = r; this.w = w; this.h = h; } }
@@ -284,7 +285,7 @@ public static class MoonCaveInstaller
 
             if ((float)rng.NextDouble() < P.roomProb)
             {
-                float rr = Rand(P.roomMin, P.roomMax);
+                float rr = (float)rng.NextDouble() < P.bigRoomProb ? Rand(P.bigRoomMin, P.bigRoomMax) : Rand(P.roomMin, P.roomMax);
                 // A room must not eat a neighbouring passage.
                 bool roomOk = true;
                 Vector3 pc = Pos(c);
@@ -294,14 +295,17 @@ public static class MoonCaveInstaller
                 {
                     var (a, b) = net.legs[k];
                     if (Touches(a, ci, -1) || Touches(b, ci, -1)) continue;
+                    // Rooms need less spare rock than legs: both sides still
+                    // carry 3 m walls, and a cavern grazing a passage's wall is
+                    // exactly the kind of junction a cave has.
                     float lr = (net.nodes[a].r + net.nodes[b].r) * 0.5f;
-                    if (SegPointDist(Pos(net.nodes[a]), Pos(net.nodes[b]), pc) - lr - rr < P.gap) roomOk = false;
+                    if (SegPointDist(Pos(net.nodes[a]), Pos(net.nodes[b]), pc) - lr - rr < P.gap * 0.4f) roomOk = false;
                 }
                 for (int k = 0; k < net.rooms.Count && roomOk; k++)
                 {
                     var rm = net.rooms[k];
                     if (Touches(rm.node, ci, -1)) continue;
-                    if ((Pos(net.nodes[rm.node]) - pc).magnitude - rm.r - rr < P.gap) roomOk = false;
+                    if ((Pos(net.nodes[rm.node]) - pc).magnitude - rm.r - rr < P.gap * 0.4f) roomOk = false;
                 }
                 if (roomOk) net.rooms.Add((ci, rr, P.roomW, P.roomH));
             }
@@ -367,6 +371,7 @@ public static class MoonCaveInstaller
     static Renderer[] _hidden;
     static CelestialBody _moon;
     static double _startedAt;
+    static Mesh _terrainPreview;          // for the mouth skin's terrainData (UV0)
 
     [MenuItem("Tools/Cave/Install Moon Caves")]
     public static void Install()
@@ -457,6 +462,7 @@ public static class MoonCaveInstaller
     {
         var mc = terrainT.gameObject.AddComponent<MeshCollider>();
         mc.sharedMesh = mf.sharedMesh;
+        _terrainPreview = mf.sharedMesh;
         Physics.SyncTransforms();
         try
         {
@@ -632,8 +638,8 @@ public static class MoonCaveInstaller
                 float m = Mean(c);
                 if (float.IsNaN(m)) { score[c] = float.NegativeInfinity; continue; }
                 double ns = 0; int nc = 0;
-                for (int dl = -4; dl <= 4; dl++)
-                    for (int dn = -4; dn <= 4; dn++)
+                for (int dl = -6; dl <= 6; dl++)
+                    for (int dn = -6; dn <= 6; dn++)
                     {
                         if (dl == 0 && dn == 0) continue;
                         int l2 = la + dl; if (l2 < 0 || l2 >= Lat) continue;
@@ -661,8 +667,10 @@ public static class MoonCaveInstaller
                     // 26 m of tunnel at 44° north).
                     if (d.y < 0.08f || d.y > 0.5f) continue;
                     float az = Mathf.Atan2(d.z, d.x) * Mathf.Rad2Deg;
-                    if (Mathf.Abs(Mathf.DeltaAngle(az, siteAz)) > 22f) continue; // mouths stay ~120° apart
-                    if (score[c] > bestScore) { bestScore = score[c]; best = c; }
+                    float dev = Mathf.Abs(Mathf.DeltaAngle(az, siteAz));
+                    if (dev > 40f) continue;                                   // mouths stay roughly a third apart
+                    float sc = score[c] - dev * 0.0004f;                       // a big crater 30° off beats a dimple on the spot
+                    if (sc > bestScore) { bestScore = sc; best = c; }
                 }
             if (best < 0) { site.craterNote = "no crater found, kept the default site"; continue; }
             site.dir = sumDir[best].normalized;
@@ -825,6 +833,35 @@ public static class MoonCaveInstaller
         GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);
 
         // Rock
+        // The mouth skin: our sinkhole triangles, re-expressed in the moon
+        // generator's unit-sphere space with the terrain's own UV0 data, under a
+        // child whose transform reproduces the generator's — so the moon's
+        // terrain material draws it exactly like the ground next to it.
+        {
+            const string skinName = "Cave_MouthSkin";
+            var skinT = root.transform.Find(skinName);
+            GameObject skin = skinT != null ? skinT.gameObject : new GameObject(skinName);
+            skin.transform.SetParent(root.transform, false);
+            skin.layer = LayerMask.NameToLayer("Body");
+            float Rgen = _moon.radius;
+            Quaternion invRot = Quaternion.Inverse(site.localRot);
+            skin.transform.localRotation = invRot;
+            skin.transform.localPosition = -(invRot * site.localPos);
+            skin.transform.localScale = Vector3.one * Rgen;
+            Mesh skinMesh = BuildSkinMesh(site, Rgen);
+            string skinPath = $"{OutFolder}/Cave_Moon_{site.name}_Mouth.asset";
+            SaveMesh(skinMesh, skinPath);
+            var savedSkin = AssetDatabase.LoadAssetAtPath<Mesh>(skinPath);
+            Ensure<MeshFilter>(skin).sharedMesh = savedSkin;
+            var skinR = Ensure<MeshRenderer>(skin);
+            skinR.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/5 - External Imports/Celestial Body/Solar System/Humble Abode/Constant Companion/Constant Companion.mat");
+            var skinCol = Ensure<MeshCollider>(skin);
+            skinCol.convex = false;
+            skinCol.sharedMesh = null;
+            skinCol.sharedMesh = savedSkin;
+            Ensure<MoonSkinMaterialSync>(skin);
+        }
+
         var rockT = root.transform.Find("Cave_Rock");
         GameObject rock = rockT != null ? rockT.gameObject : new GameObject("Cave_Rock");
         rock.transform.SetParent(root.transform, false);
@@ -887,6 +924,75 @@ public static class MoonCaveInstaller
         foreach (var g in stale) Object.DestroyImmediate(g);
     }
 
+    /// The skin mesh in the generator's space: vertices = moon-local / R,
+    /// UV0 = the nearest terrain vertex's shading data, tangents recalculated.
+    static Mesh BuildSkinMesh(Site site, float Rgen)
+    {
+        var src = site.result.mouthSkin;
+        var v = src.vertices; var n = src.normals; var c = src.colors;
+        Matrix4x4 caveToMoon = Matrix4x4.TRS(site.localPos, site.localRot, Vector3.one);
+        var outV = new Vector3[v.Length]; var outN = new Vector3[v.Length];
+        for (int i = 0; i < v.Length; i++)
+        {
+            outV[i] = caveToMoon.MultiplyPoint3x4(v[i]) / Rgen;
+            outN[i] = caveToMoon.MultiplyVector(n[i]).normalized;
+        }
+        // Terrain shading data (UV0, float4) from the nearest terrain vertex by direction.
+        var uv = new List<Vector4>(v.Length);
+        var tv = _terrainPreview != null ? _terrainPreview.vertices : null;
+        var tuv = new List<Vector4>();
+        if (_terrainPreview != null) _terrainPreview.GetUVs(0, tuv);
+        if (tv != null && tuv.Count == tv.Length && tv.Length > 0)
+        {
+            const int Lat = 90, Lon = 180;
+            var bins = new Dictionary<int, List<int>>();
+            int Bin(Vector3 d)
+            {
+                int la = Mathf.Clamp((int)((Mathf.Asin(Mathf.Clamp(d.y, -1f, 1f)) + Mathf.PI * 0.5f) / Mathf.PI * Lat), 0, Lat - 1);
+                int lo = Mathf.Clamp((int)((Mathf.Atan2(d.z, d.x) + Mathf.PI) / (2f * Mathf.PI) * Lon), 0, Lon - 1);
+                return la * Lon + lo;
+            }
+            for (int i = 0; i < tv.Length; i++)
+            {
+                if (tv[i].sqrMagnitude < 1e-6f) continue;
+                int b = Bin(tv[i].normalized);
+                if (!bins.TryGetValue(b, out var l)) bins[b] = l = new List<int>();
+                l.Add(i);
+            }
+            for (int i = 0; i < outV.Length; i++)
+            {
+                Vector3 d = outV[i].normalized;
+                int la = Mathf.Clamp((int)((Mathf.Asin(Mathf.Clamp(d.y, -1f, 1f)) + Mathf.PI * 0.5f) / Mathf.PI * Lat), 0, Lat - 1);
+                int lo = Mathf.Clamp((int)((Mathf.Atan2(d.z, d.x) + Mathf.PI) / (2f * Mathf.PI) * Lon), 0, Lon - 1);
+                int best = -1; float bestDot = -2f;
+                for (int dl = -1; dl <= 1; dl++)
+                    for (int dn = -1; dn <= 1; dn++)
+                    {
+                        int l2 = la + dl; if (l2 < 0 || l2 >= Lat) continue;
+                        int n2 = ((lo + dn) % Lon + Lon) % Lon;
+                        if (!bins.TryGetValue(l2 * Lon + n2, out var list)) continue;
+                        foreach (int ti in list)
+                        {
+                            float dot = Vector3.Dot(d, tv[ti].normalized);
+                            if (dot > bestDot) { bestDot = dot; best = ti; }
+                        }
+                    }
+                uv.Add(best >= 0 ? tuv[best] : Vector4.zero);
+            }
+        }
+        else for (int i = 0; i < outV.Length; i++) uv.Add(Vector4.zero);
+
+        var mesh = new Mesh { name = "Cave_MouthSkin", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+        mesh.vertices = outV;
+        mesh.normals = outN;
+        mesh.colors = c;
+        mesh.SetUVs(0, uv);
+        mesh.triangles = src.triangles;
+        mesh.RecalculateBounds();
+        mesh.RecalculateTangents();
+        return mesh;
+    }
+
     static void FillVolume(CaveVolume volume, CaveSolid.Layout L)
     {
         var a = new List<Vector3>(); var b = new List<Vector3>(); var r = new List<float>();
@@ -939,7 +1045,8 @@ public static class MoonCaveInstaller
         existing.vertices = mesh.vertices;
         existing.normals = mesh.normals;
         existing.colors = mesh.colors;
-        existing.uv = mesh.uv;
+        var uv4 = new List<Vector4>(); mesh.GetUVs(0, uv4);
+        existing.SetUVs(0, uv4);
         existing.tangents = mesh.tangents;
         existing.triangles = mesh.triangles;
         existing.RecalculateBounds();

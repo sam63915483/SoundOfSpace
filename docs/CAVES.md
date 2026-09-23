@@ -62,6 +62,20 @@ with the spawner's mesh-bottom maths, `CaveCrystal_Glow.mat` + `CrystalGlow`
 (pulsing emission, a small blue light on every 5th). Stalactites and columns in
 every recipe; the log's `features:` line says how many were actually placed.
 
+**Round 5 (same day) — THE MOUTH IS THE MOON'S OWN MATERIAL.** The first 8 m
+of path (`CaveSolid.MouthSkinPathMetres`) are split off as a smooth mesh
+(`Result.mouthSkin`), re-expressed in the generator's unit-sphere space with
+UV0 copied from the nearest terrain vertex (`BuildSkinMesh`), under a child
+`Cave_MouthSkin` whose transform reproduces the generator's (inverse of the
+cave's local TRS × scale R). It renders with `Constant Companion.mat`, and
+`MoonSkinMaterialSync` swaps in the terrain's live material instance at
+runtime — same shader, colours, normal maps and per-body uniforms as the ground
+next to it. The cave shader only starts past that. Crystals: seated by
+MEASURING the lowest mesh vertex along the surface normal (no pivot maths),
+18-20 per cave, 3.5 m apart, deeper half only. Features get no noise
+(floating stalactite tips). Network mix: tunnels r 2.1-2.9 m, rooms 5-9 m with
+the odd 9-11 m cavern, 8-12 loops.
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

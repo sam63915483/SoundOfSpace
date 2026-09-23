@@ -71,8 +71,8 @@ public static class CaveRockTextures
         mat.SetColor("_FlatColB", new Color(0.735849f, 0.735849f, 0.735849f));
         mat.SetColor("_SteepCol", new Color(0.057654828f, 0.046858326f, 0.084905684f));
         mat.SetFloat("_MoonBrightness", 0.86f);        // the moon reads a touch darker than its raw colours (Sam: "a bit lighter")
-        mat.SetFloat("_FadeStart", 0.12f);
-        mat.SetFloat("_FadeEnd", 0.75f);
+        mat.SetFloat("_FadeStart", 0.3f);     // the first 8 m are the moon's own material (mouth skin)
+        mat.SetFloat("_FadeEnd", 0.7f);
         mat.SetFloat("_ExposureFloor", 0.03f);
         mat.SetFloat("_ExposurePower", 1.6f);
         mat.SetColor("_Color", recipe == CaveSolid.Recipe.Dripstone ? new Color(1.0f, 0.92f, 0.82f)

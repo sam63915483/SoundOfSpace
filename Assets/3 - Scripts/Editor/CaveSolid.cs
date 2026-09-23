@@ -200,6 +200,9 @@ public static class CaveSolid
     public sealed class Result
     {
         public Mesh mesh;
+        /// The sinkhole and the first metres of ramp as a separate SMOOTH mesh
+        /// (cave-local), rendered with the moon's own material by the installer.
+        public Mesh mouthSkin;
         public int quads, trisFull, trisTrimmed;
         public int holes, nonManifold;
         public Bounds defectBounds;
@@ -401,11 +404,31 @@ public static class CaveSolid
         float[] exposure = ctx.ComputeExposure(v, n, tri);
         float mean = 0f; for (int i = 0; i < exposure.Length; i++) mean += exposure[i];
         R.exposureMean = exposure.Length > 0 ? mean / exposure.Length : 0f;
-        Color[] colours = ctx.VertexColours(v, n, exposure);
+        float[] path = ctx.PathDistances(v);
+        Color[] colours = ctx.VertexColours(v, n, exposure, path);
         R.featureReport = ctx.FeatureReport;
 
         int[] kept = ctx.TrimBuried(v, tri, out R.trimOpenEdges, out R.trimShallowest);
         R.trimShallowestAt = ctx.shallowestAt;
+
+        // The MOUTH SKIN: every kept triangle within the first metres of the
+        // way in and near the surface becomes its own smooth mesh, which the
+        // installer renders with the moon's own terrain material. The rest is
+        // the cave (faceted, cave shader). They share the seam exactly.
+        var skinTris = new List<int>();
+        var caveTris = new List<int>();
+        for (int i = 0; i < kept.Length; i += 3)
+        {
+            bool skin = true;
+            for (int k = 0; k < 3 && skin; k++)
+            {
+                Vector3 p = v[kept[i + k]];
+                if (path[kept[i + k]] > MouthSkinPathMetres || p.y < ctx.GroundAt(p) - 9f) skin = false;
+            }
+            (skin ? skinTris : caveTris).AddRange(new[] { kept[i], kept[i + 1], kept[i + 2] });
+        }
+        R.mouthSkin = SmoothSubmesh(v, n, colours, skinTris.ToArray());
+        kept = caveTris.ToArray();
         R.trisTrimmed = kept.Length / 3;
 
         var final = Facet(v, colours, kept);
@@ -723,8 +746,10 @@ public static class CaveSolid
                     d = SdRoundBox(q, f.scale, 0.25f);
                     break;
             }
-            if (d > 2f) return d;
-            return d + Noise(p) * st.noiseAmp * 0.3f;
+            // No noise on features: displacing a thin cone by ±0.3 m pinched
+            // stalactite tips off into floating chunks. The facets give them
+            // all the roughness they need.
+            return d;
         }
 
         // ── noise ─────────────────────────────────────────────────────────
@@ -951,7 +976,7 @@ public static class CaveSolid
                 if (!WallPoint(hst.c + hst.lat * lateral, -hst.vert, hst.r * hst.h * 2f, out Vector3 wp)) continue;
                 Vector3 half = new Vector3(Rand(0.7f, 1.6f), Rand(0.35f, 0.7f), Rand(0.7f, 1.5f));
                 var rot = Quaternion.LookRotation(hst.n, hst.up) * Quaternion.Euler(Rand(-25f, 25f), Rand(0f, 360f), Rand(-25f, 25f));
-                interior.Add(new Feature { kind = FeatureKind.Box, a = wp - hst.up * (half.y * 0.4f), scale = half, invRot = Quaternion.Inverse(rot) });
+                interior.Add(new Feature { kind = FeatureKind.Box, a = wp - hst.up * (half.y * 0.7f), scale = half, invRot = Quaternion.Inverse(rot) });
             }
             // Columns: floor to roof, off the centre line.
             for (int i = 0; i < st.columns; i++)
@@ -1221,9 +1246,10 @@ public static class CaveSolid
         /// faces take the moon's steep colour. So the vertex carries
         ///   R = noise (0..1), G = steepness (0..1 over 0..0.3 of 1 - n·up,
         ///   exactly as the moon remaps it), B = 1, A = sky exposure.
-        public Color[] VertexColours(Vector3[] v, Vector3[] n, float[] exposure)
+        public float GroundAt(Vector3 p) => G(p);
+
+        public Color[] VertexColours(Vector3[] v, Vector3[] n, float[] exposure, float[] path)
         {
-            float[] path = PathDistances(v);
             var c = new Color[v.Length];
             for (int i = 0; i < v.Length; i++)
             {
@@ -1284,7 +1310,7 @@ public static class CaveSolid
             return segDist;
         }
 
-        float[] PathDistances(Vector3[] v)
+        public float[] PathDistances(Vector3[] v)
         {
             float[] segDist = SegmentPathDistance();
             var outD = new float[v.Length];
@@ -1377,6 +1403,32 @@ public static class CaveSolid
             tris.Add(v0); tris.Add(v3); tris.Add(v2);
         }
         quadCount++;
+    }
+
+    /// Metres of tunnel from the mouth that render as moon surface.
+    public const float MouthSkinPathMetres = 8f;
+
+    /// A smooth-shaded mesh from a subset of the pre-facet triangles (re-indexed).
+    static Mesh SmoothSubmesh(Vector3[] v, Vector3[] n, Color[] c, int[] tris)
+    {
+        var map = new Dictionary<int, int>();
+        var fv = new List<Vector3>(); var fn = new List<Vector3>(); var fc = new List<Color>();
+        var ft = new int[tris.Length];
+        for (int i = 0; i < tris.Length; i++)
+        {
+            int src = tris[i];
+            if (!map.TryGetValue(src, out int dst))
+            {
+                dst = fv.Count; map[src] = dst;
+                fv.Add(v[src]); fn.Add(n[src]); fc.Add(c[src]);
+            }
+            ft[i] = dst;
+        }
+        var mesh = new Mesh { name = "Cave_MouthSkin", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+        mesh.SetVertices(fv); mesh.SetNormals(fn); mesh.SetColors(fc);
+        mesh.triangles = ft;
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     /// Split every triangle into its own three vertices with the face normal,

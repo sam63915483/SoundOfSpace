@@ -43,7 +43,7 @@ public class CaveCrystalSeeder : MonoBehaviour
     public float embedDepth = 0.08f;
 
     [Tooltip("Keeps them apart so they don't grow into clumps.")]
-    public float minSpacing = 2.2f;
+    public float minSpacing = 3.5f;
 
     [Tooltip("Deterministic — the same cave always grows the same crystals.")]
     public int seed = 90210;
@@ -77,7 +77,11 @@ public class CaveCrystalSeeder : MonoBehaviour
             return;
         }
 
-        var shell = GetComponentInChildren<MeshCollider>();
+        // The cave's interior collider — NOT the mouth skin's (a sibling that
+        // is moon surface and must stay bare).
+        var rockT = transform.Find("Cave_Rock");
+        var shell = rockT != null ? rockT.GetComponent<MeshCollider>() : null;
+        if (shell == null) shell = GetComponentInChildren<MeshCollider>();
         if (shell == null)
         {
             Debug.LogWarning("[CaveCrystalSeeder] No cave collider to plant crystals on.", this);
@@ -128,13 +132,23 @@ public class CaveCrystalSeeder : MonoBehaviour
             float t = Mathf.Pow(Random.value, scaleBiasExponent);
             float scale = Mathf.Lerp(minScale, maxScale, t);
 
-            // Base on the surface: lift by the mesh bottom, then a whisker in.
-            Vector3 pos = hit.point - hit.normal * (bottomY * scale + embedDepth);
-            var go = Instantiate(prefab, pos, Quaternion.identity, transform);
+            var go = Instantiate(prefab, hit.point, Quaternion.identity, transform);
             go.name = "CaveCrystal_" + made;
             go.transform.rotation = Quaternion.LookRotation(hit.normal) *
                                     Quaternion.Euler(90f, 0f, Random.Range(0f, 360f));
             go.transform.localScale = baseScale * scale;
+            // Seat it by MEASURING: the lowest mesh vertex along the surface
+            // normal goes exactly onto the hit point (a whisker in). No pivot
+            // guesswork — this is what put crystals 95% inside the wall.
+            float lowest = float.MaxValue;
+            foreach (var mfx in go.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (mfx.sharedMesh == null) continue;
+                var verts = mfx.sharedMesh.vertices;
+                for (int k = 0; k < verts.Length; k++)
+                    lowest = Mathf.Min(lowest, Vector3.Dot(mfx.transform.TransformPoint(verts[k]) - hit.point, hit.normal));
+            }
+            if (lowest != float.MaxValue) go.transform.position += hit.normal * (-lowest - embedDepth);
 
             // The prefab ships with no collider; the axe needs one to hit.
             if (go.GetComponentInChildren<Collider>(true) == null)

@@ -30,8 +30,8 @@ Shader "Custom/CaveRock"
         _FlatColB ("Moon flat colour B", Color) = (0.736, 0.736, 0.736, 1)
         _SteepCol ("Moon steep colour", Color) = (0.0577, 0.0469, 0.0849, 1)
         _MoonBrightness ("Moon brightness match", Range(0.5, 1.2)) = 0.86
-        _FadeStart ("Fade to cave stone: start (path 0..1)", Range(0, 1)) = 0.12
-        _FadeEnd ("Fade to cave stone: end (path 0..1)", Range(0, 1)) = 0.75
+        _FadeStart ("Fade to cave stone: start (path 0..1)", Range(0, 1)) = 0.3
+        _FadeEnd ("Fade to cave stone: end (path 0..1)", Range(0, 1)) = 0.7
         _ExposureFloor ("Minimum daylight inside", Range(0, 0.3)) = 0.03
         _ExposurePower ("Daylight falloff", Range(0.5, 3)) = 1.6
     }
