@@ -219,7 +219,7 @@ public static class MoonCaveInstaller
             // Reaching the core: a leg that lands on the core cavern joins it.
             if (cand.magnitude < CoreCavernRadius + 4f && net.coreLinks < P.coreLinks)
             {
-                Vector3 onCore = cand.normalized * (CoreCavernRadius + 0.5f);
+                Vector3 onCore = cand.normalized * (CoreCavernRadius - 3f);
                 if (Slope(f.p, onCore) > P.coreSlopeDeg || !Clear(f.p, onCore, (f.r + 2.4f) * 0.5f, fi, net.coreNode))
                 {
                     if (++f.fails > 800) frontier.Remove(fi);
@@ -314,7 +314,7 @@ public static class MoonCaveInstaller
                     for (float theta = 20f; theta <= 85f && !linked; theta += 5f)
                     {
                         Vector3 dir = (up * Mathf.Cos(theta * Mathf.Deg2Rad) + side * Mathf.Sin(theta * Mathf.Deg2Rad)).normalized;
-                        Vector3 onCore = dir * (CoreCavernRadius + 0.5f);
+                        Vector3 onCore = dir * (CoreCavernRadius - 3f);
                         if (Slope(n.p, onCore) > 36f) continue;
                         if ((onCore - n.p).magnitude > 30f) continue;
                         if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
@@ -361,11 +361,13 @@ public static class MoonCaveInstaller
             L.rooms.Add(new CaveSolid.Room { centre = net.nodes[rm.node].p, radius = rm.r, w = rm.w, h = rm.h });
         var st = L.style;
         float k150 = Mathf.Clamp(net.length / 150f, 1f, 16f);
+        // Roof features only + columns: floors stay clear for walking and,
+        // later, mobs (Sam: "little knubs coming up out of the ground").
         st.stalactites = Mathf.RoundToInt(28 * k150);
-        st.stalagmites = Mathf.RoundToInt(3 * k150);
+        st.stalagmites = 0;
         st.columns = Mathf.RoundToInt(5 * k150);
-        st.boulders = Mathf.RoundToInt(6 * k150);
-        st.blocks = Mathf.RoundToInt(2 * k150);
+        st.boulders = 0;
+        st.blocks = 0;
         st.rubble = 0;
         st.cellSize = 0.7f;            // 0.5 was ~10 M samples for the whole moon; this is ~3.6 M
         return L;
