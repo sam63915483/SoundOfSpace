@@ -39,6 +39,18 @@ shorter and the same drop far steeper. Depths beyond 8 m are scaled by 0.55 for
 that reason (`DepthScale`); the installer measures the real slopes. "Up" is the
 local radial direction everywhere (floors, cross-sections, strata, exposure).
 
+**Round 2 (same day, after Sam's first playtest):** the outcrops are gone —
+each mouth is a flush sinkhole and the slab under the ground roofs the ramp;
+the layouts are GROWN networks (`Grow` in the installer: random walk from the
+entrance, branches, loops, rooms, confined to the cave's own 120° wedge with a
+depth-aware margin; growth rules were tuned in a Python mirror first,
+`scratchpad/growsim.py` pattern); the material is MOON ROCK — the moon's own
+two flat colours, steep colour and both normal maps (Craters.tif / Rock1.jpg)
+with MoonA.shader's steepness rule, vertex G = steepness; no placed lights;
+floors clear of small spikes; cave crystals fixed (the prefab is authored at
+scale 17 — the seeder now multiplies by it like CrystalSpawner does, and adds
+the convex MeshCollider so they can be mined).
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

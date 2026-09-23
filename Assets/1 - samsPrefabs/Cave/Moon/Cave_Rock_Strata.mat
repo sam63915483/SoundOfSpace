@@ -31,14 +31,27 @@ Material:
         m_Texture: {fileID: 2800000, guid: 29dd4aed2d56cd84793453751d2aa41d, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _NormalFlat:
+        m_Texture: {fileID: 2800000, guid: 65c07d8223a8f4c0ab716441f5c8c0a1, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalSteep:
+        m_Texture: {fileID: 2800000, guid: 8a3e8acfd7e3b4a528160cc9ec108fd8, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _BumpScale: 1.2
     - _ExposureFloor: 0.03
     - _ExposurePower: 1.6
     - _MoonBlend: 0.9
-    - _Tiling: 3.5
+    - _NormalStrength: 0.589
+    - _Tiling: 2.5
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _FlatColA: {r: 1, g: 1, b: 1, a: 1}
+    - _FlatColB: {r: 0.735849, g: 0.735849, b: 0.735849, a: 1}
     - _MoonColor: {r: 0.78, g: 0.78, b: 0.78, a: 1}
+    - _SteepCol: {r: 0.057654828, g: 0.046858326, b: 0.084905684, a: 1}
+    - _SteepColInside: {r: 0.24, g: 0.22, b: 0.27, a: 1}
   m_BuildTextureStacks: []

@@ -114,7 +114,22 @@ public class CaveCrystalSeeder : MonoBehaviour
             // all face the same way.
             go.transform.rotation = Quaternion.LookRotation(hit.normal) *
                                     Quaternion.Euler(90f, 0f, Random.Range(0f, 360f));
-            go.transform.localScale = Vector3.one * scale;
+            // The crystal prefab is AUTHORED at scale ~17 (CrystalSpawner
+            // multiplies by that). Setting the scale to 1-2 directly made
+            // every cave crystal a few centimetres tall — 130 per cave, none
+            // findable (Sam, twice). Same rule as the surface spawner now.
+            go.transform.localScale = prefab.transform.localScale * scale;
+            // The prefab ships with no collider; the axe needs one to hit.
+            if (go.GetComponentInChildren<Collider>(true) == null)
+            {
+                var mf = go.GetComponentInChildren<MeshFilter>(true);
+                if (mf != null && mf.sharedMesh != null)
+                {
+                    var mc = mf.gameObject.AddComponent<MeshCollider>();
+                    mc.sharedMesh = mf.sharedMesh;
+                    mc.convex = true;
+                }
+            }
 
             var crystal = go.GetComponent<SpawnedCrystal>();
             if (crystal == null) crystal = go.AddComponent<SpawnedCrystal>();

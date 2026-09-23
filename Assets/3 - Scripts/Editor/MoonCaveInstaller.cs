@@ -760,9 +760,10 @@ public static class MoonCaveInstaller
         // Pocket lights in the biggest rooms — dim, warm, no shadows.
         int li = 0;
         var wanted = new HashSet<string>();
-        var litRooms = new List<CaveSolid.Room>(L.rooms);
-        litRooms.Sort((p, q) => q.radius.CompareTo(p.radius));
-        if (litRooms.Count > 6) litRooms.RemoveRange(6, litRooms.Count - 6);
+        // No placed lights (Sam 2026-09-22: "random lights coming from
+        // nothing"). The flashlight is the light. The loop is kept so any
+        // CaveLight_* from an earlier layout gets deleted below.
+        var litRooms = new List<CaveSolid.Room>();
         foreach (var room in litRooms)
         {
             if (room.radius < 4.5f) continue;

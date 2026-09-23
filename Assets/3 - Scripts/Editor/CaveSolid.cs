@@ -124,7 +124,7 @@ public static class CaveSolid
                     s.mouth = MouthKind.Eyebrow; s.seed = 101;
                     s.noiseAmp = 0.9f; s.noiseScale = 0.14f; s.detailWeight = 0.6f; s.warpStrength = 2.5f;
                     s.strataAmp = 0.5f; s.strataFreq = 0.55f; s.ceilingRoughen = 0.4f; s.floorNoise = 0.2f;
-                    s.stalactites = 10; s.stalagmites = 8; s.columns = 0; s.boulders = 18; s.blocks = 4; s.rubble = 12;
+                    s.stalactites = 10; s.stalagmites = 2; s.columns = 0; s.boulders = 5; s.blocks = 2; s.rubble = 0;
                     s.mouthBoulders = 4;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.rockTint = new Color(0.84f, 0.85f, 0.89f); s.floorTint = new Color(0.95f, 0.94f, 0.90f);
@@ -135,7 +135,7 @@ public static class CaveSolid
                     s.noiseAmp = 0.7f; s.noiseScale = 0.11f; s.detailWeight = 0.45f; s.warpStrength = 3.5f;
                     s.verticalStretch = 0.45f;
                     s.strataAmp = 0.15f; s.strataFreq = 0.3f; s.ceilingRoughen = 0.3f; s.floorNoise = 0.15f;
-                    s.stalactites = 60; s.stalagmites = 40; s.columns = 5; s.boulders = 4; s.blocks = 0; s.rubble = 0;
+                    s.stalactites = 60; s.stalagmites = 7; s.columns = 5; s.boulders = 2; s.blocks = 0; s.rubble = 0;
                     s.mouthBoulders = 3;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 0.6f;
@@ -146,7 +146,7 @@ public static class CaveSolid
                     s.mouth = MouthKind.Collapse; s.seed = 303;
                     s.noiseAmp = 1.0f; s.noiseScale = 0.16f; s.detailWeight = 0.7f; s.warpStrength = 2.0f;
                     s.strataAmp = 0.3f; s.strataFreq = 0.4f; s.ceilingRoughen = 0.7f; s.floorNoise = 0.3f;
-                    s.stalactites = 6; s.stalagmites = 4; s.columns = 3; s.boulders = 30; s.blocks = 18; s.rubble = 36;
+                    s.stalactites = 6; s.stalagmites = 0; s.columns = 3; s.boulders = 8; s.blocks = 5; s.rubble = 0;
                     s.mouthBoulders = 5;
                     s.moundRadii = Vector3.zero;   // flush sinkhole, no outcrop (Sam 2026-09-22)
                     s.moundNoise = 1.0f;
@@ -916,13 +916,15 @@ public static class CaveSolid
                 bool stal = i < st.stalagmites;
                 bool rub = i >= st.stalagmites + st.boulders;
                 var hst = RandomHost();
-                float lateral = Rand(0.4f, 0.88f) * hst.w * hst.r * (rng.Next(2) == 0 ? -1f : 1f);
+                float lateral = Rand(0.62f, 0.9f) * hst.w * hst.r * (rng.Next(2) == 0 ? -1f : 1f);
                 Vector3 from = hst.c + hst.lat * lateral;
                 if (!WallPoint(from, -hst.vert, hst.r * hst.h * 2f, out Vector3 wp)) continue;
                 if (stal)
                 {
-                    float len = Rand(0.6f, 2.2f);
-                    float rb = Rand(0.45f, 0.9f);
+                    // Only big ones: small floor spikes made the floor bumpy and
+                    // annoying to walk on (Sam). They also sit at the walls.
+                    float len = Rand(1.4f, 2.8f);
+                    float rb = Rand(0.8f, 1.15f);
                     interior.Add(new Feature { kind = FeatureKind.Cone, a = wp - hst.up * 0.9f, b = wp + hst.up * len, ra = rb * 1.3f, rb = 0.16f });
                 }
                 else if (rub)
@@ -932,7 +934,7 @@ public static class CaveSolid
                 }
                 else
                 {
-                    float r = Rand(0.7f, 1.8f);
+                    float r = Rand(1.2f, 2.2f);      // boulders you walk around, not trip over
                     interior.Add(new Feature { kind = FeatureKind.Ellipsoid, a = wp - hst.up * (r * 0.35f), scale = new Vector3(r * Rand(0.8f, 1.3f), r * Rand(0.7f, 1.0f), r * Rand(0.8f, 1.3f)) });
                 }
             }
@@ -1200,26 +1202,20 @@ public static class CaveSolid
 
         // ── colour ────────────────────────────────────────────────────────
 
+        /// The shader reproduces the moon's own surface rule (MoonA.shader):
+        /// colour by height-noise between the moon's two flat colours, steep
+        /// faces take the moon's steep colour. So the vertex carries
+        ///   R = noise (0..1), G = steepness (0..1 over 0..0.3 of 1 - n·up,
+        ///   exactly as the moon remaps it), B = 1, A = sky exposure.
         public Color[] VertexColours(Vector3[] v, Vector3[] n, float[] exposure)
         {
             var c = new Color[v.Length];
             for (int i = 0; i < v.Length; i++)
             {
                 Vector3 up = Up(v[i]);
-                float ny = Vector3.Dot(n[i], up);
-                Color col = st.rockTint;
-                if (ny > 0.55f) col = Color.Lerp(col, st.floorTint, (ny - 0.55f) / 0.45f * 0.75f);
-                else if (Mathf.Abs(ny) < 0.35f) col = Color.Lerp(col, st.steepTint, 0.5f);
-                // Above the terrain (the outcrop and the ground inside the hole):
-                // drift toward the moon's own grey so the mouth belongs to it.
-                float g = ground.Sample(v[i].x, v[i].z);
-                float above = Mathf.Clamp01((v[i].y - (g - 0.5f)) / 1.2f);
-                col = Color.Lerp(col, st.moonTint, above * 0.85f);
-                // Per-vertex variation so no two facets are quite the same.
-                float var = 1f + (Octave(v[i], 0.9f, 4.4f)) * 0.28f;
-                col *= var;
-                col.a = Mathf.Clamp01(exposure[i]);
-                c[i] = col;
+                float steep = Mathf.Clamp01((1f - Vector3.Dot(n[i], up)) / 0.3f);
+                float noise = Mathf.Clamp01(0.5f + Octave(v[i], 0.35f, 4.4f) * 1.6f);
+                c[i] = new Color(noise, steep, 1f, Mathf.Clamp01(exposure[i]));
             }
             return c;
         }

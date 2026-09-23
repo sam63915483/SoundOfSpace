@@ -53,14 +53,22 @@ public static class CaveRockTextures
             AssetDatabase.CreateAsset(mat, matPath);
         }
         mat.shader = shader;
+        // The cave is MOON ROCK: same two flat colours, same steep colour and
+        // the same two normal maps the moon's own material uses (read from
+        // Constant Companion.mat + Shading.asset, 2026-09-22). _MainTex is only
+        // a noise source now, like the moon's own noise texture.
         mat.SetTexture("_MainTex", albedo);
-        mat.SetTexture("_BumpMap", normal);
-        mat.SetFloat("_Tiling", recipe == CaveSolid.Recipe.Dripstone ? 4.5f : 3.5f);
-        mat.SetFloat("_BumpScale", recipe == CaveSolid.Recipe.Dripstone ? 0.8f : 1.2f);
+        mat.SetTexture("_NormalFlat", AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/5 - External Imports/Celestial Body/Textures/Normals/Craters.tif"));
+        mat.SetTexture("_NormalSteep", AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/5 - External Imports/Celestial Body/Textures/Normals/Rock1.jpg"));
+        mat.SetFloat("_Tiling", 2.5f);                 // the moon tiles its normals every ~2.5 m of surface
+        mat.SetFloat("_NormalStrength", 0.589f);       // the moon's _NormalMapStrength
+        mat.SetColor("_FlatColA", new Color(1f, 1f, 1f));
+        mat.SetColor("_FlatColB", new Color(0.735849f, 0.735849f, 0.735849f));
+        mat.SetColor("_SteepCol", new Color(0.057654828f, 0.046858326f, 0.084905684f));
+        mat.SetColor("_SteepColInside", new Color(0.24f, 0.22f, 0.27f));
         mat.SetFloat("_ExposureFloor", 0.03f);
         mat.SetFloat("_ExposurePower", 1.6f);
         mat.SetColor("_Color", Color.white);
-        if (mat.HasProperty("_MoonColor")) { mat.SetColor("_MoonColor", new Color(0.78f, 0.78f, 0.78f)); mat.SetFloat("_MoonBlend", 0.9f); }
         mat.enableInstancing = true;
         EditorUtility.SetDirty(mat);
         return mat;
