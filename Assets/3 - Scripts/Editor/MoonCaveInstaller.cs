@@ -39,6 +39,13 @@ public static class MoonCaveInstaller
     const float MaxWalkSlopeDeg = 28f;
     const float CoreCavernRadius = 13f;      // the zero-g cavern at the centre
     const double TimeoutSeconds = 180.0;
+    /// Every stage appends a timestamped line here. If the Editor freezes, this
+    /// file says which stage it froze in.
+    public static readonly string LogPath = System.IO.Path.GetFullPath("Library/MoonCaves.log");
+    static void Log(string line)
+    {
+        try { System.IO.File.AppendAllText(LogPath, $"{System.DateTime.Now:HH:mm:ss}  {line}\n"); } catch { }
+    }
 
     // Moon base, moon-local (measured 2026-09-22): bounds centre and a sphere
     // that comfortably contains it.
@@ -66,7 +73,7 @@ public static class MoonCaveInstaller
     class NetParams
     {
         public int seed = 7;
-        public int targetLegs = 230, loops = 30;
+        public int targetLegs = 140, loops = 20;
         public float turnMax = 85f;                  // degrees either side per leg, in the tangent plane
         public float lenMin = 12f, lenMax = 20f;
         public float branchKeep = 0.65f;
@@ -335,7 +342,7 @@ public static class MoonCaveInstaller
         st.boulders = Mathf.RoundToInt(6 * k150);
         st.blocks = Mathf.RoundToInt(2 * k150);
         st.rubble = 0;
-        st.cellSize = 0.5f;
+        st.cellSize = 0.7f;            // 0.5 was ~10 M samples for the whole moon; this is ~3.6 M
         return L;
     }
 
@@ -471,10 +478,29 @@ public static class MoonCaveInstaller
         return best;
     }
 
+    const int TLat = 360, TLon = 720;        // 0.5° cells ≈ 0.45 m at the surface
+    static float[] _radiusTable;
+
+    static void BuildRadiusTable()
+    {
+        _radiusTable = new float[TLat * TLon];
+        for (int la = 0; la < TLat; la++)
+            for (int lo = 0; lo < TLon; lo++)
+            {
+                float lat = ((la + 0.5f) / TLat - 0.5f) * Mathf.PI;
+                float lon = ((lo + 0.5f) / TLon) * 2f * Mathf.PI - Mathf.PI;
+                Vector3 d = new Vector3(Mathf.Cos(lat) * Mathf.Cos(lon), Mathf.Sin(lat), Mathf.Cos(lat) * Mathf.Sin(lon));
+                int i = NearestTerrainVertex(d);
+                _radiusTable[la * TLon + lo] = (i >= 0 ? _tv[i].magnitude : 1f) * _moon.radius;
+            }
+    }
+
     static float TerrainRadius(Vector3 dir)
     {
-        int i = NearestTerrainVertex(dir);
-        return (i >= 0 ? _tv[i].magnitude : 1f) * _moon.radius;
+        if (_radiusTable == null) BuildRadiusTable();
+        int la = Mathf.Clamp((int)((Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) / Mathf.PI + 0.5f) * TLat), 0, TLat - 1);
+        int lo = Mathf.Clamp((int)((Mathf.Atan2(dir.z, dir.x) + Mathf.PI) / (2f * Mathf.PI) * TLon), 0, TLon - 1);
+        return _radiusTable[la * TLon + lo];
     }
 
     static void InstallAll(Transform terrainT, MeshFilter mf)
@@ -482,13 +508,19 @@ public static class MoonCaveInstaller
         var mc = terrainT.gameObject.AddComponent<MeshCollider>();
         mc.sharedMesh = mf.sharedMesh;
         BuildTerrainLookup(mf.sharedMesh);
+        _radiusTable = null;
         Physics.SyncTransforms();
+        try { System.IO.File.WriteAllText(LogPath, ""); } catch { }
+        Log("start — whole-moon network");
+        CaveSolid.Progress = Log;
+        CaveSolid.TimeLimitSeconds = 720;   // 12 minutes, then it aborts itself
         try
         {
             var moonT = _moon.transform;
             var log = new System.Text.StringBuilder();
             var clock = System.Diagnostics.Stopwatch.StartNew();
             float R = _moon.radius;
+            Log("terrain lookup ready");
 
             ChooseCraterSites(mf.sharedMesh, log);
             foreach (var site in Sites)
@@ -505,11 +537,15 @@ public static class MoonCaveInstaller
             }
 
             var ground = new CaveSolid.SphereGround { centre = Vector3.zero, radiusOfDirection = TerrainRadius };
+            BuildRadiusTable();
+            Log("radius table built; growing network");
             var net = GrowMoon(R, TerrainRadius, Params, log);
             var L = BuildLayout(net, R, ground);
             double tGrow = clock.Elapsed.TotalSeconds;
+            Log($"network grown in {tGrow:0}s: {net.legs.Count} legs, {net.length:0} m; building the solid");
 
             var res = CaveSolid.Build(L);
+            Log("solid built; checks");
             log.AppendLine($"[MoonCaves] timing: network at {tGrow:0}s, solid at {clock.Elapsed.TotalSeconds:0}s.");
             log.AppendLine($"[MoonCaves] features: {res.featureReport}; {res.islandsDropped} floating triangles dropped.");
             if (!res.ok) { log.AppendLine("[MoonCaves] FAILED: " + res.failure); Debug.Log(log.ToString()); Debug.LogError("[MoonCaves] Not written."); return; }
@@ -531,13 +567,22 @@ public static class MoonCaveInstaller
             Debug.Log(log.ToString());
             if (!ok) { Debug.LogError("[MoonCaves] Not written — fix the failures above and re-run."); return; }
 
+            Log("writing assets");
             WriteAndPlace(L, res);
+            Log("saving");
             AssetDatabase.SaveAssets();
+            Log("done");
             EditorSceneManager.MarkSceneDirty(_moon.gameObject.scene);
             Debug.Log("[MoonCaves] The moon cave network is installed. SAVE THE SCENE to keep it. Press Play: CaveHoleBinder punches the three mouths on load.");
         }
+        catch (System.Exception e)
+        {
+            Log("ABORTED: " + e.Message);
+            throw;
+        }
         finally
         {
+            CaveSolid.Progress = null;
             Object.DestroyImmediate(mc);
         }
     }

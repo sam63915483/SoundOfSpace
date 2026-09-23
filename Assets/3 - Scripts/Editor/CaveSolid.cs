@@ -313,9 +313,24 @@ public static class CaveSolid
 
     // ── Build ────────────────────────────────────────────────────────────────
 
+    /// Called at every stage with a short line; the installer writes it to a
+    /// log file so a hang shows WHERE it hangs instead of nothing for hours.
+    public static Action<string> Progress;
+    /// A run that passes this is aborted with an exception, not left to freeze
+    /// the Editor (2026-09-23: eight hours frozen, nothing written).
+    public static double TimeLimitSeconds = 720;
+    static System.Diagnostics.Stopwatch _clock;
+    static void Tick(string stage)
+    {
+        Progress?.Invoke($"{_clock.Elapsed.TotalSeconds,6:0}s  {stage}");
+        if (_clock.Elapsed.TotalSeconds > TimeLimitSeconds)
+            throw new TimeoutException($"CaveSolid.Build exceeded {TimeLimitSeconds:0} s at stage '{stage}'");
+    }
+
     public static Result Build(Layout L)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        _clock = sw;
         var R = new Result();
         var st = L.style;
         float cell = st.cellSize;
@@ -337,8 +352,10 @@ public static class CaveSolid
 
         if (L.mouths.Count == 0) L.mouths.Add(new Mouth { pos = Vector3.zero, rot = Quaternion.identity });
         var ctx = new Ctx(L);
+        Tick("hole");
         ctx.ComputeHole();
         L.holeCentre = L.mouths[0].holeCentre; L.holeRadius = L.mouths[0].holeRadius;
+        Tick("features");
         ctx.PlaceFeatures();
 
         Bounds b = ctx.ComputeBounds();
@@ -352,7 +369,10 @@ public static class CaveSolid
         // Sample the field on the grid corners once. Everything else reads this.
         var field = new float[(nx + 1) * (ny + 1) * (nz + 1)];
         var voidGrid = new float[field.Length];
+        Tick($"field {nx}x{ny}x{nz} = {field.Length / 1000000f:0.0} M samples");
         for (int z = 0; z <= nz; z++)
+        {
+            if ((z & 15) == 0) Tick($"field plane {z}/{nz}");
             for (int y = 0; y <= ny; y++)
                 for (int x = 0; x <= nx; x++)
                 {
@@ -367,7 +387,9 @@ public static class CaveSolid
                     field[idx] = d;
                     voidGrid[idx] = dVoid;
                 }
+        }
         ctx.field = field; ctx.voidGrid = voidGrid;
+        Tick("surface nets");
         ctx.UseAll();
 
         // ── Surface Nets ─────────────────────────────────────────────────────
@@ -437,12 +459,14 @@ public static class CaveSolid
                 }
         R.quads = quadCount;
 
+        Tick($"mesh {verts.Count} verts / {tris.Count / 3} tris");
         var mesh = new Mesh { name = "Cave_Solid", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
         mesh.SetVertices(verts);
         mesh.SetTriangles(tris, 0);
         mesh.RecalculateNormals();
         FixOrientation(mesh);
         R.trisFull = mesh.triangles.Length / 3;
+        Tick("closure checks");
 
         // ── Checks on the full, closed solid ─────────────────────────────────
         CountEdgeDefects(mesh, out R.holes, out R.nonManifold, out R.defectBounds);
@@ -450,6 +474,7 @@ public static class CaveSolid
         if (R.holes > 0) { R.failure = $"MESH IS NOT CLOSED — {R.holes} boundary edge(s) around {R.defectBounds.center} (extent {R.defectBounds.extents})"; R.mesh = mesh; R.seconds = sw.Elapsed.TotalSeconds; return R; }
         if (R.signedVolume <= 0.0) { R.failure = $"mesh is inside-out (signed volume {R.signedVolume:0})"; R.mesh = mesh; R.seconds = sw.Elapsed.TotalSeconds; return R; }
 
+        Tick("mouth + roof checks");
         R.mouthOk = ctx.CheckMouth(out R.mouthReport);
         R.roofOk = ctx.CheckRoof(out R.roofReport);
         if (!R.mouthOk) { R.failure = "THE HOLE WOULD SHOW THE HOLLOW MOON — " + R.mouthReport; R.mesh = mesh; R.seconds = sw.Elapsed.TotalSeconds; return R; }
@@ -459,16 +484,21 @@ public static class CaveSolid
         var v = mesh.vertices;
         var n = mesh.normals;
         var tri = mesh.triangles;
+        Tick($"exposure ({v.Length} verts)");
         float[] exposure = ctx.ComputeExposure(v, n, tri);
+        Tick("colours + path");
         float mean = 0f; for (int i = 0; i < exposure.Length; i++) mean += exposure[i];
         R.exposureMean = exposure.Length > 0 ? mean / exposure.Length : 0f;
         float[] path = ctx.PathDistances(v);
         Color[] colours = ctx.VertexColours(v, n, exposure, path);
         R.featureReport = ctx.FeatureReport;
 
+        Tick("trim");
         int[] kept = ctx.TrimBuried(v, tri, out R.trimOpenEdges, out R.trimShallowest);
         R.trimShallowestAt = ctx.shallowestAt;
+        Tick("islands");
         kept = DropIslands(v.Length, kept, out R.islandsDropped);
+        Tick("skin split + facet");
 
         // The MOUTH SKIN: every kept triangle within the first metres of the
         // way in and near the surface becomes its own smooth mesh, which the
@@ -517,6 +547,7 @@ public static class CaveSolid
         R.mesh = R.pieces[0];
         R.seconds = sw.Elapsed.TotalSeconds;
         R.ok = true;
+        Tick("build done");
         return R;
     }
 
@@ -1272,18 +1303,19 @@ public static class CaveSolid
         {
             var dirs = new List<Vector3>();
             dirs.Add(Vector3.up);
-            foreach (var (elev, count) in new[] { (72f, 3), (48f, 5), (24f, 8) })
+            foreach (var (elev, count) in new[] { (60f, 3), (30f, 6) })
                 for (int i = 0; i < count; i++)
                 {
                     float az = (i + 0.5f * (elev == 48f ? 1 : 0)) / count * Mathf.PI * 2f;
                     float e = elev * Mathf.Deg2Rad;
                     dirs.Add(new Vector3(Mathf.Cos(az) * Mathf.Cos(e), Mathf.Sin(e), Mathf.Sin(az) * Mathf.Cos(e)));
                 }
-            float step = st.cellSize * 0.8f;
-            float maxDist = 34f;
+            float step = st.cellSize * 0.9f;
+            float maxDist = 26f;
             var exposure = new float[v.Length];
             for (int i = 0; i < v.Length; i++)
             {
+                if ((i & 0x3FFFF) == 0) Tick($"exposure vertex {i}/{v.Length}");
                 Vector3 up = Up(v[i]);
                 Frame(Vector3.forward, up, out Vector3 lat, out _);
                 Vector3 fwd = Vector3.Cross(lat, up).normalized;                // lat, fwd ⟂ up
