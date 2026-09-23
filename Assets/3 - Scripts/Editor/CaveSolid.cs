@@ -719,7 +719,10 @@ public static class CaveSolid
             float horizontality = 1f - Mathf.Abs(Vector3.Dot(n, up));
             float fw = Mathf.InverseLerp(0.29f, 0.5f, horizontality);
             float floorV = -h * r * FloorSquash;
-            float floorCut = (floorV - v) * fw;
+            // BUG FIXED 2026-09-23: with fw == 0 (a steep leg) this used to be
+            // max(dTube, 0), which pinched every steep passage shut — the core
+            // tunnels sealed 3 m in as they turned toward the centre.
+            float floorCut = fw > 0f ? (floorV - v) * fw : float.NegativeInfinity;
             float d = Mathf.Max(dTube, floorCut);
             floorness = fw > 0f ? Mathf.Clamp01((floorCut - dTube) / 0.8f + 0.5f) : 0f;
             upness = Mathf.Clamp01(v / (h * r));
