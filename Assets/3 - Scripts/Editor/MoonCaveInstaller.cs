@@ -216,23 +216,6 @@ public static class MoonCaveInstaller
             Vector3 cand = f.p + heading * len - up * desc;
             var c = new Node { p = cand, heading = heading, r = Rand(P.rMin, P.rMax), w = Rand(P.wMin, P.wMax), h = Rand(P.hMin, P.hMax) };
 
-            // Reaching the core: a leg that lands on the core cavern joins it.
-            if (cand.magnitude < CoreCavernRadius + 4f && net.coreLinks < P.coreLinks)
-            {
-                Vector3 onCore = cand.normalized * (CoreCavernRadius - 3f);
-                if (Slope(f.p, onCore) > P.coreSlopeDeg || !Clear(f.p, onCore, (f.r + 2.4f) * 0.5f, fi, net.coreNode))
-                {
-                    if (++f.fails > 800) frontier.Remove(fi);
-                    continue;
-                }
-                int ci2 = Add(new Node { p = onCore, heading = heading, r = 2.4f, w = 1.2f, h = 1.0f });
-                Link(fi, ci2); Link(ci2, net.coreNode);
-                net.coreLinks++;
-                f.children++;
-                if (f.children >= 3) frontier.Remove(fi);
-                continue;
-            }
-
             bool ok = Allowed(cand) && Slope(f.p, cand) <= P.maxSlopeDeg;
             if (ok) ok = Clear(f.p, cand, (f.r + c.r) * 0.5f, fi, -1);
             if (!ok)
@@ -289,42 +272,52 @@ public static class MoonCaveInstaller
             net.loops++;
         }
 
-        // Make sure the core is reachable: if too few legs got there, connect
-        // the nearest deep nodes directly (steeper allowed — it's low-g down there).
-        if (net.coreLinks < 2)
+        // CORE SPOKES: three walkable two-leg descents into the core from
+        // junctions spread around the moon. Each landing point is found by
+        // sweeping directions and measuring the slope — nothing assumed.
+        bool Descend(int from, float targetRadius, float maxSlope, out int made)
         {
-            var order = new List<int>();
-            for (int i = 0; i < net.nodes.Count; i++) if (!net.nodes[i].core && net.nodes[i].links.Count > 0) order.Add(i);
-            order.Sort((x, y) => net.nodes[x].p.magnitude.CompareTo(net.nodes[y].p.magnitude));
-            for (int k = 0; k < order.Count && net.coreLinks < 2; k++)
-            {
-                var n = net.nodes[order[k]];
-                // Straight down is a 90° shaft. Approach the core at ≤ 33°:
-                // run sideways far enough for the drop, in one of 12 directions.
-                Vector3 up = n.p.normalized;
-                Frame(up, out Vector3 t0, out Vector3 t1);
-                bool linked = false;
-                // Sweep the landing point around the core sphere: 12 directions
-                // × angular offsets from 20° to 85°, first one that is walkable
-                // (measured, not assumed) and clear of other passages wins.
-                for (int d = 0; d < 12 && !linked; d++)
+            made = -1;
+            var n = net.nodes[from];
+            Vector3 up = n.p.normalized;
+            Frame(up, out Vector3 t0, out Vector3 t1);
+            for (float theta = 10f; theta <= 85f; theta += 5f)
+                for (int d = 0; d < 12; d++)
                 {
                     float ang = d * 30f * Mathf.Deg2Rad;
                     Vector3 side = (t0 * Mathf.Cos(ang) + t1 * Mathf.Sin(ang)).normalized;
-                    for (float theta = 20f; theta <= 85f && !linked; theta += 5f)
-                    {
-                        Vector3 dir = (up * Mathf.Cos(theta * Mathf.Deg2Rad) + side * Mathf.Sin(theta * Mathf.Deg2Rad)).normalized;
-                        Vector3 onCore = dir * (CoreCavernRadius - 3f);
-                        if (Slope(n.p, onCore) > 36f) continue;
-                        if ((onCore - n.p).magnitude > 30f) continue;
-                        if (!Clear(n.p, onCore, (n.r + 2.4f) * 0.5f, order[k], net.coreNode)) continue;
-                        int ci2 = Add(new Node { p = onCore, r = 2.4f, w = 1.2f, h = 1.0f });
-                        Link(order[k], ci2); Link(ci2, net.coreNode);
-                        net.coreLinks++;
-                        linked = true;
-                    }
+                    Vector3 dir = (up * Mathf.Cos(theta * Mathf.Deg2Rad) + side * Mathf.Sin(theta * Mathf.Deg2Rad)).normalized;
+                    Vector3 target = dir * targetRadius;
+                    float len = (target - n.p).magnitude;
+                    if (len < 6f || len > 26f) continue;
+                    if (Slope(n.p, target) > maxSlope) continue;
+                    if (targetRadius > CoreCavernRadius && (target - MoonBaseLocal).magnitude < MoonBaseRadius + MoonBaseGap) continue;
+                    if (!Clear(n.p, target, (n.r + 2.6f) * 0.5f, from, targetRadius < CoreCavernRadius ? net.coreNode : -1)) continue;
+                    made = Add(new Node { p = target, heading = Vector3.ProjectOnPlane(dir, target.normalized).normalized, r = 2.6f, w = 1.25f, h = 1.05f });
+                    Link(from, made);
+                    return true;
                 }
-            }
+            return false;
+        }
+        var starts = new List<int>();
+        for (int i = 0; i < net.nodes.Count; i++)
+        {
+            var n = net.nodes[i];
+            float rad = n.p.magnitude;
+            if (n.core || n.links.Count == 0 || rad < 19f || rad > 30f) continue;
+            bool farEnough = true;
+            foreach (int sIdx in starts) if (Vector3.Angle(net.nodes[sIdx].p, n.p) < 80f) { farEnough = false; break; }
+            if (farEnough) starts.Add(i);
+            if (starts.Count == 3) break;
+        }
+        foreach (int start in starts)
+        {
+            float r0 = net.nodes[start].p.magnitude;
+            float midR = (r0 + CoreCavernRadius - 4f) * 0.5f;
+            if (!Descend(start, midR, 28f, out int mid)) { log.AppendLine($"[MoonCaves] core spoke from node {start} (r={r0:0.0}): no walkable first leg"); continue; }
+            if (!Descend(mid, CoreCavernRadius - 4f, 30f, out int end)) { log.AppendLine($"[MoonCaves] core spoke from node {start}: no walkable second leg"); continue; }
+            Link(end, net.coreNode);
+            net.coreLinks++;
         }
         float deepest = 0f; foreach (var n in net.nodes) if (!n.core) deepest = Mathf.Max(deepest, R - n.p.magnitude);
         log.AppendLine($"[MoonCaves] Network: {net.legs.Count} legs, {net.length:0} m, {net.rooms.Count - 1} caverns + the core, {net.loops} loops, {net.coreLinks} tunnels into the core, deepest node {deepest:0.0} m under, {tries} tries.");
@@ -573,6 +566,20 @@ public static class MoonCaveInstaller
 
             var res = CaveSolid.Build(L);
             Log("solid built; checks");
+            // Prove the core tunnels are OPEN in the rock, not just listed.
+            foreach (var sg in L.segments)
+            {
+                if (Mathf.Min(sg.a.magnitude, sg.b.magnitude) > CoreCavernRadius) continue;
+                float len = (sg.b - sg.a).magnitude; int steps = Mathf.CeilToInt(len / 0.5f); float blockedAt = -1f;
+                for (int i = 0; i <= steps && blockedAt < 0f; i++)
+                {
+                    Vector3 pnt = Vector3.Lerp(sg.a, sg.b, i / (float)steps);
+                    if (res.SampleField(pnt) < 0f) blockedAt = i * 0.5f;
+                }
+                log.AppendLine(blockedAt < 0f ? $"[MoonCaves] core tunnel {sg.a.magnitude:0.0}→{sg.b.magnitude:0.0} m from centre: OPEN"
+                                              : $"[MoonCaves] core tunnel {sg.a.magnitude:0.0}→{sg.b.magnitude:0.0} m from centre: BLOCKED {blockedAt:0.0} m in");
+                if (blockedAt >= 0f) res.ok = false;
+            }
             log.AppendLine($"[MoonCaves] timing: network at {tGrow:0}s, solid at {clock.Elapsed.TotalSeconds:0}s.");
             log.AppendLine($"[MoonCaves] features: {res.featureReport}; {res.islandsDropped} floating triangles dropped.");
             if (!res.ok) { log.AppendLine("[MoonCaves] FAILED: " + res.failure); Debug.Log(log.ToString()); Debug.LogError("[MoonCaves] Not written."); return; }

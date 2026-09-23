@@ -273,6 +273,8 @@ public static class CaveSolid
         public double seconds;
         public bool ok;
         public string failure = "";
+        /// The rock field after the build: negative = rock, positive = air.
+        public Func<Vector3, float> SampleField = _ => 1f;
     }
 
     // ── Constants that are not per-style ─────────────────────────────────────
@@ -547,6 +549,7 @@ public static class CaveSolid
         R.mesh = R.pieces[0];
         R.seconds = sw.Elapsed.TotalSeconds;
         R.ok = true;
+        R.SampleField = p => ctx.FieldAt(p);
         Tick("build done");
         return R;
     }
@@ -647,6 +650,7 @@ public static class CaveSolid
 
         /// Signed height above the terrain surface.
         public float H(Vector3 p) => ground.Height(p);
+        public float FieldAt(Vector3 p) { float f = SampleGridTrilinear(field, p); return f == float.MaxValue ? 1f : f; }
 
         Mouth NearestMouth(Vector3 p, out float radial)
         {
