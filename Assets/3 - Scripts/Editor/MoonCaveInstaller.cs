@@ -348,7 +348,8 @@ public static class MoonCaveInstaller
         {
             var na = net.nodes[a]; var nb = net.nodes[b];
             if (na.core || nb.core) continue;       // the core is a room; legs end on its surface
-            L.segments.Add(new CaveSolid.Segment { a = na.p, b = nb.p, ra = na.r, rb = nb.r, wa = na.w, wb = nb.w, ha = na.h, hb = nb.h, openAir = openAir });
+            bool spoke = Mathf.Min(na.p.magnitude, nb.p.magnitude) < CoreCavernRadius + 8f;
+            L.segments.Add(new CaveSolid.Segment { a = na.p, b = nb.p, ra = na.r, rb = nb.r, wa = na.w, wb = nb.w, ha = na.h, hb = nb.h, openAir = openAir, noFeatures = spoke });
         }
         foreach (var rm in net.rooms)
             L.rooms.Add(new CaveSolid.Room { centre = net.nodes[rm.node].p, radius = rm.r, w = rm.w, h = rm.h });
@@ -574,7 +575,7 @@ public static class MoonCaveInstaller
                 for (int i = 0; i <= steps && blockedAt < 0f; i++)
                 {
                     Vector3 pnt = Vector3.Lerp(sg.a, sg.b, i / (float)steps);
-                    if (res.SampleField(pnt) < 0f) blockedAt = i * 0.5f;
+                    if (res.SampleField(pnt) < 0f) { blockedAt = i * 0.5f; log.AppendLine("[MoonCaves]   why: " + res.Explain(pnt)); }
                 }
                 log.AppendLine(blockedAt < 0f ? $"[MoonCaves] core tunnel {sg.a.magnitude:0.0}→{sg.b.magnitude:0.0} m from centre: OPEN"
                                               : $"[MoonCaves] core tunnel {sg.a.magnitude:0.0}→{sg.b.magnitude:0.0} m from centre: BLOCKED {blockedAt:0.0} m in");

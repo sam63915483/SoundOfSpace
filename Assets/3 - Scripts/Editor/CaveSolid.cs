@@ -65,6 +65,8 @@ public static class CaveSolid
         /// True for the open-air approach in front of the outcrop: the roof
         /// check skips it (there is nothing above it but sky, by design).
         public bool openAir;
+        /// No stalactites / columns grow on this leg (the steep core spokes).
+        public bool noFeatures;
     }
 
     /// A room — an ellipsoid the tunnels open into.
@@ -275,6 +277,7 @@ public static class CaveSolid
         public string failure = "";
         /// The rock field after the build: negative = rock, positive = air.
         public Func<Vector3, float> SampleField = _ => 1f;
+        public Func<Vector3, string> Explain = _ => "";
     }
 
     // ── Constants that are not per-style ─────────────────────────────────────
@@ -550,6 +553,7 @@ public static class CaveSolid
         R.seconds = sw.Elapsed.TotalSeconds;
         R.ok = true;
         R.SampleField = p => ctx.FieldAt(p);
+        R.Explain = p => ctx.Explain(p);
         Tick("build done");
         return R;
     }
@@ -651,6 +655,22 @@ public static class CaveSolid
         /// Signed height above the terrain surface.
         public float H(Vector3 p) => ground.Height(p);
         public float FieldAt(Vector3 p) { float f = SampleGridTrilinear(field, p); return f == float.MaxValue ? 1f : f; }
+
+        /// Which term makes this point rock? For diagnosing a blocked tunnel.
+        public string Explain(Vector3 p)
+        {
+            UseAll();
+            float raw = VoidRaw(p, out float fl, out float upn);
+            float dVoid = raw + WallNoise(p, fl, upn);
+            float hgt = H(p);
+            float hull = Hull(p);
+            float hullClipped = Mathf.Max(hull, hgt + Bury(p));
+            float rock = Mathf.Max(hullClipped, -dVoid);
+            int bestF = -1; float bestD = float.MaxValue;
+            for (int i = 0; i < interior.Count; i++) { float d = FeatureField(p, interior[i]); if (d < bestD) { bestD = d; bestF = i; } }
+            string feat = bestF >= 0 ? $"nearest feature #{bestF} {interior[bestF].kind} d={bestD:0.00}" : "no features";
+            return $"grid={FieldAt(p):0.00} voidRaw={raw:0.00} void(noisy)={dVoid:0.00} hull={hull:0.00} height={hgt:0.0} rockBeforeFeatures={rock:0.00} {feat} skirt={InSkirtRegion(p, hgt)}";
+        }
 
         Mouth NearestMouth(Vector3 p, out float radial)
         {
@@ -1031,12 +1051,12 @@ public static class CaveSolid
         {
             // Weighted by length so long passages get their share.
             float total = 0f;
-            foreach (var s in segs) if (!s.openAir) total += (s.b - s.a).magnitude;
+            foreach (var s in segs) if (!s.openAir && !s.noFeatures) total += (s.b - s.a).magnitude;
             foreach (var r in rooms) total += r.radius * 2f;
             float pick = Rand(0f, total), acc = 0f;
             foreach (var s in segs)
             {
-                if (s.openAir) continue;
+                if (s.openAir || s.noFeatures) continue;
                 float len = (s.b - s.a).magnitude;
                 acc += len;
                 if (pick <= acc)
