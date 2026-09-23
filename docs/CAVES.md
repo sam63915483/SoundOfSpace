@@ -88,6 +88,17 @@ put some upside down). Also: the backtick debug menu wraps its cheat buttons
 into a second column when they would fall off the screen (`NextSlot` in
 `GravityDebugUI`), and god mode keeps the suit O2 full (`OxygenManager`).
 
+**Round 7 (same day) — THE WHOLE CAVE IS THE MOON.** Both pieces (smooth
+mouth skin + faceted interior) live in the generator's unit-sphere space and
+render with `Custom/CaveMoonRock` (`Assets/Shaders/CaveMoonRock.shader`: a copy
+of `Celestial/MoonA.shader` with sky exposure darkening the sun/ambient in the
+forward-base pass and the crater map + ejecta fading out with path distance).
+`MoonSkinMaterialSync` on the cave root copies the terrain's LIVE material
+into it at runtime (`CopyPropertiesFromMaterial` + keywords) — no seam
+anywhere. Network: slim tunnels (r 2.0-2.6) 12-20 m long between caverns
+7-11 m (some 12-14 m, shrunk near the core), growth far more patient. Crystal
+lights: every 2nd, range 14, pulsing 1.0-1.9, emission ×1.4.
+
 **The rock look** (`CaveSolid.Style`, one preset per recipe): faceted shading
 (vertices split per triangle), ridged + domain-warped noise with depth-banded
 STRATA for ledges, elliptical wider-than-tall passages, floors that flatten up

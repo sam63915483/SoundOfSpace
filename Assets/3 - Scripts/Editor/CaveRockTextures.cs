@@ -83,6 +83,31 @@ public static class CaveRockTextures
         return mat;
     }
 
+    /// The cave's material: Custom/CaveMoonRock (the moon's shader plus
+    /// darkness), seeded from the moon's material asset so the Editor view is
+    /// right; at runtime MoonSkinMaterialSync copies the live terrain material.
+    public static Material GetMoonRockMaterial()
+    {
+        if (!AssetDatabase.IsValidFolder(Folder)) { AssetDatabase.CreateFolder("Assets/1 - samsPrefabs", "Cave"); AssetDatabase.CreateFolder("Assets/1 - samsPrefabs/Cave", "Moon"); }
+        string path = $"{Folder}/CaveMoonRock.mat";
+        var shader = Shader.Find("Custom/CaveMoonRock");
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(shader != null ? shader : Shader.Find("Standard")) { name = "CaveMoonRock" };
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        var moon = AssetDatabase.LoadAssetAtPath<Material>("Assets/5 - External Imports/Celestial Body/Solar System/Humble Abode/Constant Companion/Constant Companion.mat");
+        if (shader != null) mat.shader = shader;
+        if (moon != null) { mat.CopyPropertiesFromMaterial(moon); mat.shaderKeywords = moon.shaderKeywords; }
+        mat.SetFloat("_ExposureFloor", 0.05f);
+        mat.SetFloat("_ExposurePower", 1.6f);
+        mat.SetFloat("_CraterFadeStart", 0.25f);
+        mat.SetFloat("_CraterFadeEnd", 0.9f);
+        EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
     /// The crystal prefab's material with emission switched on, so CrystalGlow
     /// can pulse it. Same texture, same shader; only the keyword differs.
     public static Material GetCrystalGlowMaterial()
@@ -95,7 +120,7 @@ public static class CaveRockTextures
         mat.name = "CaveCrystal_Glow";
         mat.EnableKeyword("_EMISSION");
         mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-        mat.SetColor("_EmissionColor", new Color(0.35f, 0.62f, 1f) * 0.6f);
+        mat.SetColor("_EmissionColor", new Color(0.35f, 0.62f, 1f) * 1.4f);
         AssetDatabase.CreateAsset(mat, path);
         return mat;
     }

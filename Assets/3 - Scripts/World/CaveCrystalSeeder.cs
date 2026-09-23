@@ -185,8 +185,8 @@ public class CaveCrystalSeeder : MonoBehaviour
                     var l = lgo.AddComponent<Light>();
                     l.type = LightType.Point;
                     l.color = glow.glow;
-                    l.range = 6f;
-                    l.intensity = 0.5f;
+                    l.range = 14f;
+                    l.intensity = 1.4f;
                     l.shadows = LightShadows.None;
                     glow.pulseLight = l;
                     lights++;

@@ -15,12 +15,12 @@ public class CrystalGlow : MonoBehaviour
     [Tooltip("Emission colour at full pulse.")]
     public Color glow = new Color(0.35f, 0.62f, 1f);
     [Tooltip("Emission multiplier at the bottom / top of the pulse.")]
-    public float minGlow = 0.35f, maxGlow = 1.0f;
+    public float minGlow = 0.9f, maxGlow = 1.8f;
     [Tooltip("Pulses per second.")]
     public float speed = 0.45f;
     [Tooltip("Optional point light that breathes with the emission.")]
     public Light pulseLight;
-    public float lightMin = 0.25f, lightMax = 0.7f;
+    public float lightMin = 1.0f, lightMax = 1.9f;
 
     Renderer[] _renderers;
     MaterialPropertyBlock _block;

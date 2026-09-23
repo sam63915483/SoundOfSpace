@@ -99,32 +99,34 @@ public static class MoonCaveInstaller
         public float branchKeep = 0.55f;            // chance a node stays open for another child
         // Caverns joined by tunnels that feel like tunnels: long legs, a cavern
         // at most nodes, passages wide enough not to feel claustrophobic.
-        public float roomProb = 0.7f, roomMin = 6f, roomMax = 9.5f, roomW = 1.2f, roomH = 1.0f;
-        public float bigRoomProb = 0.15f, bigRoomMin = 10f, bigRoomMax = 13f;   // the odd great cavern
-        public float rMin = 2.6f, rMax = 3.2f, wMin = 1.25f, wMax = 1.45f, hMin = 0.9f, hMax = 1.05f;
-        public float minDepth = 9f, maxDepth = 28f;          // 28: keeps 12 m clear of the core with 3 m walls (30 gave 11.8)
-        public float alongMax = 78f, xMin = -34f, xMax = 34f, sMin = -60f;
+        // SLIM tunnels that feel like tunnels, leading to open caverns with
+        // more tunnels off them (Sam). Legs are long; a cavern at most nodes.
+        public float roomProb = 0.75f, roomMin = 7f, roomMax = 11f, roomW = 1.2f, roomH = 1.0f;
+        public float bigRoomProb = 0.15f, bigRoomMin = 12f, bigRoomMax = 14f;   // the odd great cavern
+        public float rMin = 2.0f, rMax = 2.6f, wMin = 1.15f, wMax = 1.3f, hMin = 0.95f, hMax = 1.1f;
+        public float minDepth = 8f, maxDepth = 28f;          // 28: keeps 12 m clear of the core with 3 m walls (30 gave 11.8)
+        public float alongMax = 82f, xMin = -34f, xMax = 34f, sMin = -70f;
         public float sectorHalfDeg = 60f;                    // each cave owns a 120° wedge of the moon (about its axis)...
-        public float sectorMarginM = 10f;                    // ...minus this much rock (room + wall + half the gap) at the wedge edge, so the wedge narrows with depth
+        public float sectorMarginM = 8f;                     // ...minus this much rock at the wedge edge, so the wedge narrows with depth
         public float gap = 2.5f;                    // metres of rock kept between separate passages (walls are 3 m thick on top)
         public float maxSlopeDeg = 25f;
     }
 
     static readonly NetParams WarrenParams = new NetParams
     {
-        seed = 11, targetLegs = 34, loops = 8, turnMax = 80f, lenMin = 14f, lenMax = 22f,
-        descMin = -1.0f, descMax = 4.5f, branchKeep = 0.6f, roomProb = 0.7f, roomMin = 6f, roomMax = 9f,
+        seed = 11, targetLegs = 48, loops = 10, turnMax = 80f, lenMin = 12f, lenMax = 20f,
+        descMin = -3.0f, descMax = 5.0f, branchKeep = 0.65f, roomProb = 0.75f, roomMin = 7f, roomMax = 10f,
     };
     static readonly NetParams DescentParams = new NetParams
     {
-        seed = 22, targetLegs = 32, loops = 6, turnMax = 100f, lenMin = 14f, lenMax = 22f,
-        descMin = 1.0f, descMax = 6.0f, branchKeep = 0.5f, roomProb = 0.7f, roomMin = 6f, roomMax = 9.5f, roomH = 1.15f,
+        seed = 22, targetLegs = 46, loops = 8, turnMax = 100f, lenMin = 12f, lenMax = 20f,
+        descMin = -2.0f, descMax = 6.0f, branchKeep = 0.6f, roomProb = 0.75f, roomMin = 7f, roomMax = 11f, roomH = 1.15f,
     };
     static readonly NetParams HallParams = new NetParams
     {
-        seed = 33, targetLegs = 30, loops = 7, turnMax = 75f, lenMin = 15f, lenMax = 24f,
-        descMin = -0.5f, descMax = 4.5f, branchKeep = 0.55f, roomProb = 0.7f, roomMin = 6.5f, roomMax = 10f, roomW = 1.3f, roomH = 0.85f,
-        rMin = 2.8f, rMax = 3.5f, wMin = 1.35f, wMax = 1.6f, hMin = 0.85f, hMax = 0.95f,
+        seed = 33, targetLegs = 44, loops = 9, turnMax = 75f, lenMin = 13f, lenMax = 22f,
+        descMin = -3.0f, descMax = 5.0f, branchKeep = 0.6f, roomProb = 0.75f, roomMin = 7.5f, roomMax = 11f, roomW = 1.3f, roomH = 0.85f,
+        rMin = 2.2f, rMax = 2.8f, wMin = 1.25f, wMax = 1.4f, hMin = 0.9f, hMax = 1.0f,
     };
 
     struct P { public float x, d, s, r, w, h; public P(float x, float d, float s, float r, float w = 1f, float h = 1f) { this.x = x; this.d = d; this.s = s; this.r = r; this.w = w; this.h = h; } }
@@ -245,7 +247,7 @@ public static class MoonCaveInstaller
 
         var frontier = new List<int> { n4 };
         int tries = 0;
-        while (net.legs.Count < P.targetLegs + 4 && tries < 20000 && frontier.Count > 0)
+        while (net.legs.Count < P.targetLegs + 4 && tries < 60000 && frontier.Count > 0)
         {
             tries++;
             // Prefer the newest open nodes so the cave sprawls outward, but keep
@@ -275,7 +277,7 @@ public static class MoonCaveInstaller
             }
             if (!ok)
             {
-                if (++f.fails > 120) frontier.Remove(fi);
+                if (++f.fails > 500) frontier.Remove(fi);
                 continue;
             }
             int ci = Add(c);
@@ -288,6 +290,13 @@ public static class MoonCaveInstaller
             if ((float)rng.NextDouble() < P.roomProb)
             {
                 float rr = (float)rng.NextDouble() < P.bigRoomProb ? Rand(P.bigRoomMin, P.bigRoomMax) : Rand(P.roomMin, P.roomMax);
+                // A cavern must keep 12 m of rock (MinCoreRadius) between its
+                // wall and the moon's centre: shrink deep ones to fit.
+                float radial = (R - c.d) - 3f - MinCoreRadius - 0.5f;
+                rr = Mathf.Min(rr, radial / Mathf.Max(P.roomW, P.roomH));
+                if (rr < P.roomMin * 0.7f) rr = 0f;
+                if (rr > 0f)
+                {
                 // A room must not eat a neighbouring passage.
                 bool roomOk = true;
                 Vector3 pc = Pos(c);
@@ -310,6 +319,7 @@ public static class MoonCaveInstaller
                     if ((Pos(net.nodes[rm.node]) - pc).magnitude - rm.r - rr < P.gap * 0.4f) roomOk = false;
                 }
                 if (roomOk) net.rooms.Add((ci, rr, P.roomW, P.roomH));
+                }
             }
         }
 
@@ -831,50 +841,50 @@ public static class MoonCaveInstaller
         seeder.seed = 90210 + site.name[0];
         seeder.deepFraction = 0.3f;
         seeder.cavernsOnly = true;
+        seeder.glowLightEvery = 2;
         seeder.glowLightEvery = 5;
         seeder.glowMaterial = CaveRockTextures.GetCrystalGlowMaterial();
         GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);
 
         // Rock
-        // The mouth skin: our sinkhole triangles, re-expressed in the moon
-        // generator's unit-sphere space with the terrain's own UV0 data, under a
-        // child whose transform reproduces the generator's — so the moon's
-        // terrain material draws it exactly like the ground next to it.
-        {
-            const string skinName = "Cave_MouthSkin";
-            var skinT = root.transform.Find(skinName);
-            GameObject skin = skinT != null ? skinT.gameObject : new GameObject(skinName);
-            skin.transform.SetParent(root.transform, false);
-            skin.layer = LayerMask.NameToLayer("Body");
-            float Rgen = _moon.radius;
-            Quaternion invRot = Quaternion.Inverse(site.localRot);
-            skin.transform.localRotation = invRot;
-            skin.transform.localPosition = -(invRot * site.localPos);
-            skin.transform.localScale = Vector3.one * Rgen;
-            Mesh skinMesh = BuildSkinMesh(site, Rgen);
-            string skinPath = $"{OutFolder}/Cave_Moon_{site.name}_Mouth.asset";
-            SaveMesh(skinMesh, skinPath);
-            var savedSkin = AssetDatabase.LoadAssetAtPath<Mesh>(skinPath);
-            Ensure<MeshFilter>(skin).sharedMesh = savedSkin;
-            var skinR = Ensure<MeshRenderer>(skin);
-            skinR.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/5 - External Imports/Celestial Body/Solar System/Humble Abode/Constant Companion/Constant Companion.mat");
-            var skinCol = Ensure<MeshCollider>(skin);
-            skinCol.convex = false;
-            skinCol.sharedMesh = null;
-            skinCol.sharedMesh = savedSkin;
-            Ensure<MoonSkinMaterialSync>(skin);
-        }
+        // THE WHOLE CAVE IS THE MOON. Both pieces — the smooth mouth skin and
+        // the faceted interior — are re-expressed in the moon generator's
+        // unit-sphere space with the terrain's own UV0 data, under children
+        // whose transform reproduces the generator's, and rendered with
+        // Custom/CaveMoonRock (MoonA's shader plus darkness). At runtime
+        // MoonSkinMaterialSync (on the root) copies the terrain's live material
+        // into it, so there is no seam anywhere: it is the same rock.
+        float Rgen = _moon.radius;
+        Quaternion invRot = Quaternion.Inverse(site.localRot);
+        var moonMat = CaveRockTextures.GetMoonRockMaterial();
+        var sync = Ensure<MoonSkinMaterialSync>(root);
+        sync.template = moonMat;
+        foreach (var t in root.GetComponentsInChildren<MoonSkinMaterialSync>(true))
+            if (t.gameObject != root) Object.DestroyImmediate(t);
 
-        var rockT = root.transform.Find("Cave_Rock");
-        GameObject rock = rockT != null ? rockT.gameObject : new GameObject("Cave_Rock");
-        rock.transform.SetParent(root.transform, false);
-        rock.layer = LayerMask.NameToLayer("Body");
-        Ensure<MeshFilter>(rock).sharedMesh = mesh;
-        Ensure<MeshRenderer>(rock).sharedMaterial = material;
-        var col = Ensure<MeshCollider>(rock);
-        col.convex = false;
-        col.sharedMesh = null;
-        col.sharedMesh = mesh;
+        GameObject Piece(string name, Mesh caveLocal, string assetSuffix)
+        {
+            var tr = root.transform.Find(name);
+            GameObject go = tr != null ? tr.gameObject : new GameObject(name);
+            go.transform.SetParent(root.transform, false);
+            go.layer = LayerMask.NameToLayer("Body");
+            go.transform.localRotation = invRot;
+            go.transform.localPosition = -(invRot * site.localPos);
+            go.transform.localScale = Vector3.one * Rgen;
+            Mesh gm = ToGeneratorSpace(site, Rgen, caveLocal, name);
+            string path = $"{OutFolder}/Cave_Moon_{site.name}_{assetSuffix}.asset";
+            SaveMesh(gm, path);
+            var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            Ensure<MeshFilter>(go).sharedMesh = saved;
+            Ensure<MeshRenderer>(go).sharedMaterial = moonMat;
+            var mc = Ensure<MeshCollider>(go);
+            mc.convex = false;
+            mc.sharedMesh = null;
+            mc.sharedMesh = saved;
+            return go;
+        }
+        Piece("Cave_MouthSkin", site.result.mouthSkin, "Mouth");
+        Piece("Cave_Rock", site.result.mesh, "Rock");
 
         // Hole marker: a cylinder over the computed crossing zone.
         const string holeName = "TerrainHole - Mouth";
@@ -927,11 +937,10 @@ public static class MoonCaveInstaller
         foreach (var g in stale) Object.DestroyImmediate(g);
     }
 
-    /// The skin mesh in the generator's space: vertices = moon-local / R,
+    /// A cave-local mesh in the generator's space: vertices = moon-local / R,
     /// UV0 = the nearest terrain vertex's shading data, tangents recalculated.
-    static Mesh BuildSkinMesh(Site site, float Rgen)
+    static Mesh ToGeneratorSpace(Site site, float Rgen, Mesh src, string name)
     {
-        var src = site.result.mouthSkin;
         var v = src.vertices; var n = src.normals; var c = src.colors;
         Matrix4x4 caveToMoon = Matrix4x4.TRS(site.localPos, site.localRot, Vector3.one);
         var outV = new Vector3[v.Length]; var outN = new Vector3[v.Length];
@@ -985,7 +994,7 @@ public static class MoonCaveInstaller
         }
         else for (int i = 0; i < outV.Length; i++) uv.Add(Vector4.zero);
 
-        var mesh = new Mesh { name = "Cave_MouthSkin", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+        var mesh = new Mesh { name = name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
         mesh.vertices = outV;
         mesh.normals = outN;
         mesh.colors = c;
